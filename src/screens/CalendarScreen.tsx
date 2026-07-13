@@ -1,9 +1,10 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { IconButton } from '../components/core/IconButton';
 import { PlatformIcon } from '../components/data/PlatformIcon';
 import { Badge } from '../components/core/Badge';
 import { useWorkspaces } from '../WorkspaceContext';
+import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
 import { api } from '../api';
 
@@ -13,10 +14,20 @@ const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 export function CalendarScreen() {
   const { current } = useWorkspaces();
   const key = current!.key;
-  const { data, loading, error } = useApi(() => api.calendar(key), [key]);
+  const { data, loading, error, refetch } = useApi(() => api.calendar(key), [key]);
+  const { showToast } = useToast();
 
   const heatByCell = new Map<string, number>();
   data?.heatmap.forEach((h) => heatByCell.set(`${h.day}-${h.hour}`, h.value));
+
+  async function handleDelete(id: number) {
+    try {
+      await api.deleteScheduledPost(id);
+      refetch();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't delete post", description: err instanceof Error ? err.message : String(err) });
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -83,7 +94,13 @@ export function CalendarScreen() {
                   <div style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.caption}
                   </div>
-                  <Badge tone="brand">Scheduled</Badge>
+                  <Badge tone={p.status === 'draft' ? 'neutral' : 'brand'}>{p.status === 'draft' ? 'Draft' : 'Scheduled'}</Badge>
+                  <IconButton
+                    size="sm"
+                    icon={<Trash2 size={14} />}
+                    label="Delete post"
+                    onClick={() => handleDelete(p.id)}
+                  />
                 </div>
               ))}
             </div>

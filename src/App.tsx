@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Menu, LogOut, Plus, Building2 } from 'lucide-react';
+import { useLocation, useNavigate, Routes, Route } from 'react-router-dom';
+import { Bell, Menu, LogOut, Plus, Building2, Trash2 } from 'lucide-react';
 import { Sidebar, SidebarScreen } from './components/navigation/Sidebar';
 import { TopBar } from './components/navigation/TopBar';
 import { WorkspaceSwitcher } from './components/navigation/WorkspaceSwitcher';
@@ -13,6 +13,8 @@ import { EmptyState } from './components/feedback/EmptyState';
 import { useWorkspaces } from './WorkspaceContext';
 import { useAuth } from './AuthContext';
 import { AuthGate } from './screens/AuthGate';
+import { TermsScreen } from './screens/TermsScreen';
+import { PrivacyScreen } from './screens/PrivacyScreen';
 import tfMark from './assets/logo/tf-mark.svg';
 
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
@@ -111,7 +113,20 @@ function AppShell() {
   const [wsOpen, setWsOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
-  const { workspaces, current, index, setIndex, loading, error } = useWorkspaces();
+  const [removing, setRemoving] = React.useState<{ key: string; name: string } | null>(null);
+  const [removeBusy, setRemoveBusy] = React.useState(false);
+  const { workspaces, current, index, setIndex, loading, error, deleteWorkspace } = useWorkspaces();
+
+  async function confirmRemove() {
+    if (!removing) return;
+    setRemoveBusy(true);
+    try {
+      await deleteWorkspace(removing.key);
+      setRemoving(null);
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
 
   React.useEffect(() => {
     if (location.pathname === '/') navigate('/analytics', { replace: true });
@@ -184,18 +199,26 @@ function AppShell() {
               {wsOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', width: 220, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', padding: 6, zIndex: 30 }}>
                   {workspaces.map((w, i) => (
-                    <button
-                      key={w.key}
-                      onClick={() => { setIndex(i); setWsOpen(false); }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px',
-                        border: 'none', background: i === index ? 'var(--surface-sunken)' : 'transparent',
-                        borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
-                      }}
-                    >
-                      <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--blue-100)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 10 }}>{w.initials}</span>
-                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>{w.name}</span>
-                    </button>
+                    <div key={w.key} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <button
+                        onClick={() => { setIndex(i); setWsOpen(false); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, flex: 1, padding: '8px 10px',
+                          border: 'none', background: i === index ? 'var(--surface-sunken)' : 'transparent',
+                          borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left', minWidth: 0,
+                        }}
+                      >
+                        <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--blue-100)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 10, flexShrink: 0 }}>{w.initials}</span>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
+                      </button>
+                      <IconButton
+                        size="sm"
+                        variant="ghost"
+                        icon={<Trash2 size={13} />}
+                        label={`Remove ${w.name}`}
+                        onClick={() => { setWsOpen(false); setRemoving({ key: w.key, name: w.name }); }}
+                      />
+                    </div>
                   ))}
                   <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
                   <button
@@ -219,6 +242,21 @@ function AppShell() {
         </div>
       </div>
       <CreateWorkspaceDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <Dialog
+        open={!!removing}
+        title={`Remove ${removing?.name || ''}`}
+        onClose={() => setRemoving(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button>
+            <Button variant="danger" disabled={removeBusy} onClick={confirmRemove}>{removeBusy ? 'Removing…' : 'Remove workspace'}</Button>
+          </>
+        }
+      >
+        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+          This permanently deletes all posts, connections, and reports for {removing?.name}. This can't be undone.
+        </div>
+      </Dialog>
     </div>
   );
 }
@@ -234,9 +272,11 @@ export default function App() {
     );
   }
 
-  if (!authenticated) {
-    return <AuthGate />;
-  }
-
-  return <AppShell />;
+  return (
+    <Routes>
+      <Route path="/terms" element={<TermsScreen />} />
+      <Route path="/privacy" element={<PrivacyScreen />} />
+      <Route path="*" element={authenticated ? <AppShell /> : <AuthGate />} />
+    </Routes>
+  );
 }

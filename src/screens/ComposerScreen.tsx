@@ -37,18 +37,25 @@ export function ComposerScreen() {
     setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
   }
 
-  async function handleSchedule() {
+  const [savingDraft, setSavingDraft] = React.useState(false);
+
+  async function submitPost(status: 'scheduled' | 'draft') {
     if (!current || over || !caption.trim() || selected.length === 0) return;
-    setSubmitting(true);
+    const setBusy = status === 'draft' ? setSavingDraft : setSubmitting;
+    setBusy(true);
     try {
       const h = Number(hour);
       const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
-      await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption });
-      showToast({ tone: 'positive', title: 'Post scheduled', description: `${days[Number(day)]} · ${time} — check Planning calendar.` });
+      await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status });
+      showToast({
+        tone: 'positive',
+        title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
+        description: `${days[Number(day)]} · ${time} — check Planning calendar.`,
+      });
     } catch (err) {
-      showToast({ tone: 'error', title: "Couldn't schedule post", description: err instanceof Error ? err.message : String(err) });
+      showToast({ tone: 'error', title: `Couldn't ${status === 'draft' ? 'save draft' : 'schedule post'}`, description: err instanceof Error ? err.message : String(err) });
     } finally {
-      setSubmitting(false);
+      setBusy(false);
     }
   }
 
@@ -58,8 +65,10 @@ export function ComposerScreen() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>New post</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" size="sm">Save as draft</Button>
-            <Button size="sm" disabled={over || submitting || selected.length === 0} onClick={handleSchedule}>
+            <Button variant="secondary" size="sm" disabled={over || savingDraft || selected.length === 0} onClick={() => submitPost('draft')}>
+              {savingDraft ? 'Saving…' : 'Save as draft'}
+            </Button>
+            <Button size="sm" disabled={over || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
               {submitting ? 'Scheduling…' : 'Schedule'}
             </Button>
           </div>

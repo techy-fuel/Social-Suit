@@ -1,8 +1,9 @@
 import React from 'react';
-import { FileText, Presentation, LayoutDashboard, BarChart2 } from 'lucide-react';
+import { FileText, Presentation, LayoutDashboard, BarChart2, Trash2 } from 'lucide-react';
 import { Button } from '../components/core/Button';
 import { Card } from '../components/core/Card';
 import { Badge } from '../components/core/Badge';
+import { IconButton } from '../components/core/IconButton';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
@@ -33,6 +34,16 @@ export function ReportingScreen() {
       showToast({ tone: 'error', title: "Couldn't create report", description: err instanceof Error ? err.message : String(err) });
     } finally {
       setCreating(null);
+    }
+  }
+
+  async function deleteReport(id: number, name: string) {
+    try {
+      await api.deleteReport(id);
+      showToast({ tone: 'neutral', title: 'Report deleted', description: name });
+      refetch();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't delete report", description: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -71,6 +82,7 @@ export function ReportingScreen() {
               <div style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>{r.name}</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>{r.kind} · {r.date}</div>
               <Badge tone={r.status === 'sent' ? 'positive' : 'neutral'} dot>{r.status === 'sent' ? 'Sent' : 'Draft'}</Badge>
+              <IconButton size="sm" icon={<Trash2 size={14} />} label="Delete report" onClick={() => deleteReport(r.id, r.name)} />
             </div>
           ))}
           {reports && reports.length === 0 && (

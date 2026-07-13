@@ -10,6 +10,7 @@ interface WorkspaceContextValue {
   current: Workspace | null;
   setIndex: (i: number) => void;
   createWorkspace: (name: string) => Promise<void>;
+  deleteWorkspace: (key: string) => Promise<void>;
 }
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
@@ -44,6 +45,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const deleteWorkspace = React.useCallback(async (key: string) => {
+    await api.deleteWorkspace(key);
+    setWorkspaces((prev) => {
+      const next = prev.filter((w) => w.key !== key);
+      setIndex((i) => Math.min(i, Math.max(next.length - 1, 0)));
+      return next;
+    });
+  }, []);
+
   const value: WorkspaceContextValue = {
     workspaces,
     loading,
@@ -52,6 +62,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     current: workspaces[index] || null,
     setIndex,
     createWorkspace,
+    deleteWorkspace,
   };
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

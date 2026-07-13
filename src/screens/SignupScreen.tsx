@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '../components/core/Card';
 import { Input } from '../components/forms/Input';
 import { Button } from '../components/core/Button';
@@ -52,7 +53,10 @@ export function SignupScreen({ onSwitchToLogin }: { onSwitchToLogin: () => void 
           </form>
         </Card>
 
-        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>
+          By creating an account, you agree to the <Link to="/terms">Terms of Service</Link> and <Link to="/privacy">Privacy Policy</Link>.
+        </div>
+        <div style={{ textAlign: 'center', marginTop: 10, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
           Already have an account?{' '}
           <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToLogin(); }}>Sign in</a>
         </div>

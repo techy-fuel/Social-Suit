@@ -22,7 +22,9 @@ signed-in account — one tenant can never see another's data. Several actions a
 functionally wired, not just visual: scheduling a post from Post composer,
 connecting/reconnecting a platform, replying to an inbox conversation, adding a
 SmartLink, creating a report, and starting a hashtag tracking session all write
-to the database.
+to the database — and each of those has a matching delete/disconnect action
+(scheduled posts, SmartLinks, reports, tracker sessions, connections, and whole
+workspaces can all be removed from the UI, not just created).
 
 ## Stack
 
@@ -77,4 +79,8 @@ npm run seed               # (re)seed the database — needs raw Postgres networ
 - No real social platform integration (Meta/TikTok/Google APIs) — this manages its own data, it doesn't publish anywhere.
 - No email verification or password reset flow — signup is instant, and there's no way to recover a forgotten password yet.
 - One user per account — no team invites/multiple users per tenant yet.
+- No billing/subscription system — every account has unlimited access.
+- No pagination — list endpoints (conversations, scheduled posts, etc.) return everything for a workspace in one call.
+- No rate limiting on login/signup.
+- `/terms` and `/privacy` are placeholder template text, not reviewed legal copy — replace before relying on them.
 - No end-to-end/browser tests in CI (manual verification only); unit tests cover components, hooks, the API client, and session-token logic.

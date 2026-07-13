@@ -23,6 +23,8 @@ export const api = {
 
   createWorkspace: (name: string) => request<Workspace>('workspaces', { method: 'POST', body: JSON.stringify({ name }) }),
 
+  deleteWorkspace: (key: string) => request(`workspaces?key=${encodeURIComponent(key)}`, { method: 'DELETE' }),
+
   analytics: (workspace: string) => request<{
     stats: { key: string; label: string; value: string; delta: string; timeframe: string }[];
     growthSeries: { value: number }[];
@@ -36,8 +38,10 @@ export const api = {
     heatmap: { day: number; hour: number; value: number }[];
   }>(`calendar?workspace=${encodeURIComponent(workspace)}`),
 
-  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string }) =>
+  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft' }) =>
     request(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
+
+  deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),
 
   connections: (workspace: string) => request<{ id: number; platform: Platform; label: string; status: string; account: string | null }[]>(
     `connections?workspace=${encodeURIComponent(workspace)}`
@@ -60,6 +64,8 @@ export const api = {
   addSmartlink: (workspace: string, label: string) =>
     request(`smartlinks`, { method: 'POST', body: JSON.stringify({ workspace, label }) }),
 
+  deleteSmartlink: (id: number) => request(`smartlinks?id=${id}`, { method: 'DELETE' }),
+
   ads: (workspace: string) => request<{ id: number; channel: string; name: string; status: string; spend: number; budget: number }[]>(
     `ads?workspace=${encodeURIComponent(workspace)}`
   ),
@@ -71,10 +77,14 @@ export const api = {
   createReport: (workspace: string, name: string, kind: string) =>
     request(`reporting`, { method: 'POST', body: JSON.stringify({ workspace, name, kind }) }),
 
+  deleteReport: (id: number) => request(`reporting?id=${id}`, { method: 'DELETE' }),
+
   trackerSessions: (workspace: string) => request<{ id: number; hashtag: string; platform: string; status: string; started: string; mentions: number }[]>(
     `tracker?workspace=${encodeURIComponent(workspace)}`
   ),
 
   startTracking: (workspace: string, hashtag: string, platform: string, duration: string) =>
     request(`tracker`, { method: 'POST', body: JSON.stringify({ workspace, hashtag, platform, duration }) }),
+
+  deleteTrackerSession: (id: number) => request(`tracker?id=${id}`, { method: 'DELETE' }),
 };

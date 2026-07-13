@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '../components/core/Button';
 import { Badge } from '../components/core/Badge';
 import { PlatformIcon } from '../components/data/PlatformIcon';
+import { Dialog } from '../components/feedback/Dialog';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
@@ -23,18 +24,20 @@ export function ConnectionsScreen() {
   const key = current!.key;
   const { data, loading, error, refetch } = useApi(() => api.connections(key), [key]);
   const [pendingId, setPendingId] = React.useState<number | null>(null);
+  const [managing, setManaging] = React.useState<{ id: number; label: string } | null>(null);
   const { showToast } = useToast();
 
   async function setStatus(id: number, status: string, label: string) {
     setPendingId(id);
     try {
       await api.updateConnection(id, status);
-      showToast({ tone: 'positive', title: `${label} connected` });
+      showToast({ tone: status === 'not-connected' ? 'neutral' : 'positive', title: `${label} ${status === 'not-connected' ? 'disconnected' : 'connected'}` });
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: `Couldn't update ${label}`, description: err instanceof Error ? err.message : String(err) });
     } finally {
       setPendingId(null);
+      setManaging(null);
     }
   }
 
@@ -72,11 +75,35 @@ export function ConnectionsScreen() {
                   {pendingId === c.id ? 'Reconnecting…' : 'Reconnect'}
                 </Button>
               )}
-              {c.status === 'connected' && <Button size="sm" variant="ghost">Manage</Button>}
+              {c.status === 'connected' && (
+                <Button size="sm" variant="ghost" onClick={() => setManaging({ id: c.id, label: c.label })}>Manage</Button>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      <Dialog
+        open={!!managing}
+        title={managing?.label || ''}
+        onClose={() => setManaging(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setManaging(null)}>Cancel</Button>
+            <Button
+              variant="danger"
+              disabled={pendingId === managing?.id}
+              onClick={() => managing && setStatus(managing.id, 'not-connected', managing.label)}
+            >
+              {pendingId === managing?.id ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+          Disconnecting {managing?.label} stops scheduling and analytics from this platform until it's reconnected.
+        </div>
+      </Dialog>
     </div>
   );
 }

@@ -3,6 +3,17 @@ import { sql, getWorkspaceId, badRequest } from './_db';
 import { withAuth, Session } from './_auth';
 
 async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
+  if (req.method === 'DELETE') {
+    const id = req.query.id;
+    if (!id) return badRequest(res, 'id is required');
+    const rows = await sql`
+      DELETE FROM reports
+      WHERE id = ${id} AND workspace_id IN (SELECT id FROM workspaces WHERE account_id = ${session.accountId})
+      RETURNING id`;
+    if (rows.length === 0) return res.status(404).json({ error: 'Report not found.' });
+    return res.status(200).json({ ok: true });
+  }
+
   if (req.method === 'POST') {
     const { workspace, name, kind } = req.body || {};
     if (!workspace || !name || !kind) return badRequest(res, 'workspace, name, kind are required');

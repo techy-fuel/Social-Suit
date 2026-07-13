@@ -1,8 +1,10 @@
 import React from 'react';
+import { Trash2 } from 'lucide-react';
 import { Button } from '../components/core/Button';
 import { Input } from '../components/forms/Input';
 import { Select } from '../components/forms/Select';
 import { Badge } from '../components/core/Badge';
+import { IconButton } from '../components/core/IconButton';
 import { Table } from '../components/data/Table';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
@@ -40,6 +42,16 @@ export function TrackerScreen() {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function deleteSession(id: number, tag: string) {
+    try {
+      await api.deleteTrackerSession(id);
+      showToast({ tone: 'neutral', title: 'Tracking stopped', description: tag });
+      refetch();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't stop tracking", description: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -81,11 +93,13 @@ export function TrackerScreen() {
               { key: 'started', label: 'Started', mono: true },
               { key: 'mentions', label: 'Mentions', align: 'right', mono: true },
               { key: 'status', label: 'Status' },
+              { key: 'actions', label: '', align: 'right' },
             ]}
             rows={(sessions || []).map((s) => ({
               ...s,
               mentions: s.mentions.toLocaleString(),
               status: <Badge tone={s.status === 'active' ? 'positive' : 'neutral'} dot>{s.status === 'active' ? 'Active' : 'Completed'}</Badge>,
+              actions: <IconButton size="sm" icon={<Trash2 size={14} />} label="Delete session" onClick={() => deleteSession(s.id, s.hashtag)} />,
             }))}
           />
         </div>

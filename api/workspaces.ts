@@ -14,6 +14,14 @@ function initialsOf(name: string): string {
 }
 
 async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
+  if (req.method === 'DELETE') {
+    const key = String(req.query.key || '');
+    if (!key) return badRequest(res, 'key is required');
+    const rows = await sql`DELETE FROM workspaces WHERE key = ${key} AND account_id = ${session.accountId} RETURNING id`;
+    if (rows.length === 0) return res.status(404).json({ error: 'Workspace not found.' });
+    return res.status(200).json({ ok: true });
+  }
+
   if (req.method === 'POST') {
     const { name } = req.body || {};
     if (typeof name !== 'string' || !name.trim()) return badRequest(res, 'name is required');

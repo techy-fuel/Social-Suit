@@ -1,5 +1,5 @@
 import React from 'react';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { Button } from '../components/core/Button';
 import { IconButton } from '../components/core/IconButton';
 import { Dialog } from '../components/feedback/Dialog';
@@ -19,6 +19,16 @@ export function SmartLinksScreen() {
   const { showToast } = useToast();
 
   const totalClicks = (links || []).reduce((s, l) => s + l.clicks, 0);
+
+  async function deleteLink(id: number, linkLabel: string) {
+    try {
+      await api.deleteSmartlink(id);
+      showToast({ tone: 'neutral', title: 'Link removed', description: linkLabel });
+      refetch();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't remove link", description: err instanceof Error ? err.message : String(err) });
+    }
+  }
 
   async function addLink() {
     if (!current || !label.trim()) return;
@@ -58,6 +68,7 @@ export function SmartLinksScreen() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--blue-sky)' }}>{l.clicks.toLocaleString()} clicks</div>
                   <IconButton size="sm" icon={<GripVertical size={14} />} label="Reorder" />
+                  <IconButton size="sm" icon={<Trash2 size={14} />} label="Remove link" onClick={() => deleteLink(l.id, l.label)} />
                 </div>
               </div>
             ))}
