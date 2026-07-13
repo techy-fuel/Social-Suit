@@ -1,10 +1,14 @@
 import React from 'react';
-import { Bell } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Bell, Menu, LogOut } from 'lucide-react';
 import { Sidebar, SidebarScreen } from './components/navigation/Sidebar';
 import { TopBar } from './components/navigation/TopBar';
 import { WorkspaceSwitcher } from './components/navigation/WorkspaceSwitcher';
 import { IconButton } from './components/core/IconButton';
-import { workspaces } from './mock-data';
+import { Tooltip } from './components/feedback/Tooltip';
+import { useWorkspaces } from './WorkspaceContext';
+import { useAuth } from './AuthContext';
+import { LoginScreen } from './screens/LoginScreen';
 import tfMark from './assets/logo/tf-mark.svg';
 
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
@@ -29,6 +33,18 @@ const titles: Record<SidebarScreen, string> = {
   settings: 'Connections',
 };
 
+const paths: Record<SidebarScreen, string> = {
+  analytics: '/analytics',
+  calendar: '/calendar',
+  composer: '/composer',
+  inbox: '/inbox',
+  smartlinks: '/smartlinks',
+  ads: '/ads',
+  reporting: '/reporting',
+  tracker: '/tracker',
+  settings: '/connections',
+};
+
 const screens: Record<SidebarScreen, React.ComponentType> = {
   analytics: AnalyticsScreen,
   calendar: CalendarScreen,
@@ -41,33 +57,92 @@ const screens: Record<SidebarScreen, React.ComponentType> = {
   settings: ConnectionsScreen,
 };
 
-export default function App() {
-  const [screen, setScreen] = React.useState<SidebarScreen>('analytics');
-  const [wsIndex, setWsIndex] = React.useState(0);
-  const [wsOpen, setWsOpen] = React.useState(false);
+function screenFromPath(pathname: string): SidebarScreen {
+  const match = (Object.entries(paths) as [SidebarScreen, string][]).find(([, p]) => p === pathname);
+  return match ? match[0] : 'analytics';
+}
 
+export default function App() {
+  const { authenticated, loading: authLoading, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [wsOpen, setWsOpen] = React.useState(false);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const { workspaces, current, index, setIndex, loading, error } = useWorkspaces();
+
+  React.useEffect(() => {
+    if (authenticated && location.pathname === '/') navigate('/analytics', { replace: true });
+  }, [authenticated, location.pathname, navigate]);
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return <LoginScreen />;
+  }
+
+  const screen = screenFromPath(location.pathname);
   const Screen = screens[screen];
-  const ws = workspaces[wsIndex];
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}>
+        Loading SocialSuite…
+      </div>
+    );
+  }
+
+  if (error || !current) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: 'var(--font-body)', color: 'var(--red)', textAlign: 'center', padding: 24 }}>
+        Couldn't load workspace data{error ? `: ${error}` : ''}. Confirm the database is connected and seeded.
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: 'var(--bg)' }}>
-      <Sidebar active={screen} onNavigate={setScreen} logoSrc={tfMark} />
+      <div className={`ss-sidebar-overlay${sidebarOpen ? ' ss-sidebar-open' : ''}`} onClick={() => setSidebarOpen(false)} />
+      <div className={`ss-sidebar${sidebarOpen ? ' ss-sidebar-open' : ''}`}>
+        <Sidebar
+          active={screen}
+          onNavigate={(key) => { navigate(paths[key]); setSidebarOpen(false); }}
+          logoSrc={tfMark}
+        />
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar
           title={titles[screen]}
-          right={<IconButton icon={<Bell size={16} />} label="Notifications" />}
+          right={
+            <>
+              <span className="ss-hamburger">
+                <IconButton icon={<Menu size={16} />} label="Open menu" onClick={() => setSidebarOpen((o) => !o)} />
+              </span>
+              <Tooltip label="Notifications">
+                <IconButton icon={<Bell size={16} />} label="Notifications" />
+              </Tooltip>
+              <Tooltip label="Log out">
+                <IconButton icon={<LogOut size={16} />} label="Log out" onClick={() => logout()} />
+              </Tooltip>
+            </>
+          }
           workspace={
             <div style={{ position: 'relative' }}>
-              <WorkspaceSwitcher workspace={ws} onClick={() => setWsOpen((o) => !o)} />
+              <WorkspaceSwitcher workspace={current} onClick={() => setWsOpen((o) => !o)} />
               {wsOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', width: 220, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', padding: 6, zIndex: 30 }}>
                   {workspaces.map((w, i) => (
                     <button
                       key={w.key}
-                      onClick={() => { setWsIndex(i); setWsOpen(false); }}
+                      onClick={() => { setIndex(i); setWsOpen(false); }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px',
-                        border: 'none', background: i === wsIndex ? 'var(--surface-sunken)' : 'transparent',
+                        border: 'none', background: i === index ? 'var(--surface-sunken)' : 'transparent',
                         borderRadius: 'var(--radius-sm)', cursor: 'pointer', textAlign: 'left',
                       }}
                     >

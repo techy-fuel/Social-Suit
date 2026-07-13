@@ -9,9 +9,10 @@ export interface InputProps {
   type?: string;
   icon?: React.ReactNode;
   disabled?: boolean;
+  autoComplete?: string;
 }
 
-export function Input({ label, placeholder, value, onChange, error, type = 'text', icon, disabled }: InputProps) {
+export function Input({ label, placeholder, value, onChange, error, type = 'text', icon, disabled, autoComplete }: InputProps) {
   const [focused, setFocused] = React.useState(false);
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--font-body)' }}>
@@ -38,6 +39,7 @@ export function Input({ label, placeholder, value, onChange, error, type = 'text
           value={value}
           placeholder={placeholder}
           disabled={disabled}
+          autoComplete={autoComplete}
           onChange={onChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
