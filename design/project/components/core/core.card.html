@@ -1,0 +1,58 @@
+<!-- @dsCard group="Components" viewport="700x420" name="Core — Button, Badge, Tag, Card, Avatar" subtitle="Primitives shared across every screen" -->
+<html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px;background:var(--card);font-family:var(--font-body)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { Button, IconButton, Badge, Tag, Card, Avatar } = window.SocialSuiteDesignSystem_f55d92;
+function Demo() {
+  return (
+    <div>
+      <div className="lbl">Buttons</div>
+      <div className="row">
+        <Button variant="primary">Publish now</Button>
+        <Button variant="secondary">Save draft</Button>
+        <Button variant="ghost">Cancel</Button>
+        <Button variant="danger">Disconnect</Button>
+        <Button variant="primary" disabled>Publishing…</Button>
+        <IconButton icon={<i data-lucide="chevron-left" style={{width:16,height:16}}/>} label="Previous" />
+        <IconButton icon={<i data-lucide="star" style={{width:16,height:16}}/>} label="Active" active />
+      </div>
+      <div className="lbl">Badges &amp; tags</div>
+      <div className="row">
+        <Badge tone="positive" dot>Connected</Badge>
+        <Badge tone="warning" dot>Pending</Badge>
+        <Badge tone="error" dot>Disconnected</Badge>
+        <Badge tone="neutral">Draft</Badge>
+        <Badge tone="brand">New</Badge>
+        <Tag color="var(--blue-sky)">#HIRAOpenDay</Tag>
+        <Tag onRemove={()=>{}}>Instagram</Tag>
+      </div>
+      <div className="lbl">Avatars</div>
+      <div className="row">
+        <Avatar initials="HI" size="lg" />
+        <Avatar initials="HK" size="md" />
+        <Avatar initials="AK" size="md" tone="neutral" />
+        <Avatar initials="AR" size="sm" />
+      </div>
+      <div className="lbl">Card</div>
+      <Card title="Growth" action={<Badge tone="positive" dot>Live</Badge>} style={{maxWidth:360}}>
+        <div style={{fontFamily:'var(--font-display)',fontSize:28,fontWeight:700,color:'var(--text)'}}>128.4K</div>
+        <div style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--blue-sky)'}}>+12.4% vs last 28 days</div>
+      </Card>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+setTimeout(()=>window.lucide && window.lucide.createIcons(), 50);
+</script>
+</body></html>

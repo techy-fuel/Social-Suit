@@ -1,0 +1,35 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Navigation — Sidebar, TopBar, WorkspaceSwitcher, Tabs" subtitle="App shell chrome" -->
+<html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg);font-family:var(--font-body)}
+#root{display:flex;height:340px;overflow:hidden;border-radius:0}
+.main{flex:1;display:flex;flex-direction:column}
+.content{padding:16px 24px}
+</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { Sidebar, TopBar, WorkspaceSwitcher, Tabs } = window.SocialSuiteDesignSystem_f55d92;
+function Demo() {
+  const [tab, setTab] = React.useState('unresolved');
+  return (
+    <React.Fragment>
+      <Sidebar active="inbox" logoSrc="../../assets/logo/tf-mark.svg" />
+      <div className="main">
+        <TopBar title="Unified inbox" workspace={<WorkspaceSwitcher workspace={{initials:'HI',name:'HIRA Institute'}} />} />
+        <div className="content">
+          <Tabs items={[{key:'unresolved',label:'Unresolved',count:4},{key:'unread',label:'Unread',count:12},{key:'all',label:'All'}]} active={tab} onChange={setTab} />
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+setTimeout(()=>window.lucide && window.lucide.createIcons(), 50);
+</script>
+</body></html>

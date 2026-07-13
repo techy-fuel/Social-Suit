@@ -1,0 +1,11 @@
+<!-- @dsCard group="Spacing" viewport="700x140" name="Motion" subtitle="120/180/280ms, standard ease — no bounce, no loops" -->
+<html><head><link rel="stylesheet" href="../styles.css"><style>
+body{margin:0;padding:16px;background:var(--card);font-family:var(--font-mono);font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:10px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--blue-royal)}
+</style></head><body>
+<div class="row"><div class="dot"></div>120ms — hover/press feedback</div>
+<div class="row"><div class="dot"></div>180ms — panel/dropdown open</div>
+<div class="row"><div class="dot"></div>280ms — page-level transitions</div>
+<div class="row">cubic-bezier(0.4, 0, 0.2, 1) — the only easing curve used</div>
+</body></html>

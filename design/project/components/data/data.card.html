@@ -1,0 +1,46 @@
+<!-- @dsCard group="Components" viewport="700x520" name="Data — StatCard, DonutChart, LineChart, HeatmapCell, Table, PlatformIcon" subtitle="Analytics, calendar heatmap, tables" -->
+<html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px;background:var(--card);font-family:var(--font-body)}
+.lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;width:200px}
+</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { StatCard, DonutChart, LineChart, HeatmapCell, Table, PlatformIcon } = window.SocialSuiteDesignSystem_f55d92;
+function Demo() {
+  const heat = Array.from({length:28},()=>Math.random());
+  return (
+    <div>
+      <div className="lbl">Stat cards</div>
+      <div className="row">
+        <StatCard label="Followers" value="128.4K" delta="+12.4%" />
+        <StatCard label="Engagement rate" value="3.2%" delta="-0.4%" />
+      </div>
+      <div className="lbl">Line chart</div>
+      <div style={{maxWidth:400}}><LineChart series={[{value:1200},{value:1350},{value:1300},{value:1500},{value:1620},{value:1580},{value:1720}]} /></div>
+      <div className="lbl">Donut — followers by country</div>
+      <DonutChart data={[{label:'Pakistan',value:42},{label:'UK',value:24},{label:'USA',value:18},{label:'UAE',value:10},{label:'Other',value:6}]} size={120} thickness={18} />
+      <div className="lbl">Heatmap</div>
+      <div className="grid7">{heat.map((v,i)=><HeatmapCell key={i} value={v} size={16} />)}</div>
+      <div className="lbl">Platform icons</div>
+      <div className="row">
+        <PlatformIcon platform="facebook" /><PlatformIcon platform="instagram" /><PlatformIcon platform="tiktok" /><PlatformIcon platform="linkedin" /><PlatformIcon platform="youtube" />
+      </div>
+      <div className="lbl">Table</div>
+      <Table columns={[{key:'city',label:'City'},{key:'followers',label:'Followers',align:'right',mono:true}]}
+        rows={[{city:'Karachi',followers:'12,402'},{city:'Lahore',followers:'8,110'},{city:'Islamabad',followers:'5,244'}]} />
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+setTimeout(()=>window.lucide && window.lucide.createIcons(), 50);
+</script>
+</body></html>

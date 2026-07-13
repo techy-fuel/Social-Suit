@@ -1,0 +1,23 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Semantic status" subtitle="Sky = positive (no green ever); amber = warning; red = error" -->
+<html><head><link rel="stylesheet" href="../styles.css"><style>
+body{margin:0;padding:16px;background:var(--card);font-family:var(--font-body)}
+.row{display:flex;gap:12px}
+.card{flex:1;border-radius:var(--radius-md);padding:12px;border:1px solid}
+.label{font-weight:600;font-size:13px;margin-bottom:4px}
+.desc{font-size:11px;color:var(--text-muted)}
+</style></head><body>
+<div class="row">
+  <div class="card" style="background:var(--positive-bg);border-color:var(--positive-border)">
+    <div class="label" style="color:var(--blue-sky)">Positive</div>
+    <div class="desc">+12.4% · connected · success</div>
+  </div>
+  <div class="card" style="background:var(--amber-bg);border-color:var(--amber-border)">
+    <div class="label" style="color:var(--amber)">Warning</div>
+    <div class="desc">Pending · reconnect needed</div>
+  </div>
+  <div class="card" style="background:var(--red-bg);border-color:var(--red-border)">
+    <div class="label" style="color:var(--red)">Error</div>
+    <div class="desc">Failed to publish</div>
+  </div>
+</div>
+</body></html>

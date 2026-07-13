@@ -1,0 +1,49 @@
+<!-- @dsCard group="Components" viewport="700x480" name="Feedback — Tooltip, Toast, Dialog, ProgressBar, EmptyState" subtitle="System messaging and overlays" -->
+<html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px;background:var(--card);font-family:var(--font-body)}
+.lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:18px}
+</style>
+</head><body>
+<div id="root" style="position:relative"></div>
+<script type="text/babel">
+const { Tooltip, Toast, Dialog, ProgressBar, EmptyState, Button } = window.SocialSuiteDesignSystem_f55d92;
+function Demo() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div>
+      <div className="lbl">Toast</div>
+      <div className="row">
+        <Toast tone="positive" title="Report ready to send" description="HIRA Institute — June performance" />
+        <Toast tone="error" title="3 accounts disconnected" description="Reconnect to resume scheduling" />
+      </div>
+      <div className="lbl">Progress</div>
+      <div className="row" style={{maxWidth:280,flexDirection:'column',gap:10}}>
+        <ProgressBar label="Meta Ads spend" value={3200} max={5000} tone="brand" />
+        <ProgressBar label="Report export" value={80} max={100} tone="positive" />
+      </div>
+      <div className="lbl">Tooltip (hover)</div>
+      <div className="row">
+        <Tooltip label="42% of your audience is online at this hour"><span style={{padding:'6px 10px',border:'1px solid var(--border)',borderRadius:6,fontSize:12}}>Hover me</span></Tooltip>
+        <Button onClick={() => setOpen(true)}>Open dialog</Button>
+      </div>
+      <div className="lbl">Empty state</div>
+      <div style={{border:'1px dashed var(--border-strong)',borderRadius:10}}>
+        <EmptyState icon={<i data-lucide="link-2" style={{width:20,height:20}} />} title="Connect a platform to start scheduling" description="HIRA Institute has no connected accounts yet." action={<Button size="sm">Add connection</Button>} />
+      </div>
+      <Dialog open={open} title="Disconnect TikTok?" onClose={() => setOpen(false)} footer={<><Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button variant="danger" onClick={() => setOpen(false)}>Disconnect</Button></>}>
+        <div style={{fontSize:13,color:'var(--text)'}}>Scheduled posts for this account will not be published.</div>
+      </Dialog>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+setTimeout(()=>window.lucide && window.lucide.createIcons(), 50);
+</script>
+</body></html>

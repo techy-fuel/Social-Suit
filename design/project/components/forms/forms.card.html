@@ -1,0 +1,47 @@
+<!-- @dsCard group="Components" viewport="700x460" name="Forms — Input, Textarea, Select, Checkbox, Radio, Switch" subtitle="Composer and settings controls" -->
+<html><head>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;padding:20px;background:var(--card);font-family:var(--font-body)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+</style>
+</head><body>
+<div id="root"></div>
+<script type="text/babel">
+const { Input, Textarea, Select, Checkbox, Radio, Switch } = window.SocialSuiteDesignSystem_f55d92;
+function Demo() {
+  const [auto, setAuto] = React.useState(true);
+  return (
+    <div className="grid">
+      <div>
+        <div className="lbl">Input</div>
+        <Input label="Hashtag" placeholder="#HIRAOpenDay" />
+        <div style={{height:10}} />
+        <Input label="Caption" error="Exceeds Instagram's limit by 84 characters" />
+        <div style={{height:16}} />
+        <div className="lbl">Select</div>
+        <Select label="Period" options={[{value:'7d',label:'Last 7 days'},{value:'28d',label:'Last 28 days'}]} />
+      </div>
+      <div>
+        <div className="lbl">Textarea</div>
+        <Textarea label="Caption" rows={4} hint="1,842 / 2,200 characters" />
+        <div style={{height:16}} />
+        <div className="lbl">Checkbox / Radio / Switch</div>
+        <div className="row">
+          <Checkbox label="Select all" checked onChange={()=>{}} />
+          <Radio name="d" label="Reel" checked onChange={()=>{}} />
+          <Radio name="d" label="Story" onChange={()=>{}} />
+          <Switch checked={auto} onChange={setAuto} label="Auto-publish" />
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
+</script>
+</body></html>
