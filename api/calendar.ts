@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db';
-import { withAuth } from './_auth';
+import { withAuth, Session } from './_auth';
 
-async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   const workspace = String(req.query.workspace || (req.body && req.body.workspace) || '');
   if (!workspace) return badRequest(res, 'workspace is required');
-  const workspaceId = await getWorkspaceId(workspace);
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
 
   if (req.method === 'POST') {
     const { day, hour, time, platform, caption } = req.body || {};

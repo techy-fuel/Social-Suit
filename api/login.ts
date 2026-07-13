@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
+import { sql } from './_db';
 import { createSessionToken, setSessionCookie } from './_auth';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -8,29 +9,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { username, password, remember } = req.body || {};
-  const expectedUser = process.env.AGENCY_USERNAME;
-  const expectedHash = process.env.AGENCY_PASSWORD_HASH;
-
-  if (!expectedUser || !expectedHash) {
-    res.status(500).json({ error: 'AGENCY_USERNAME / AGENCY_PASSWORD_HASH are not configured on the server.' });
+  const { email, password, remember } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    res.status(400).json({ error: 'email and password are required' });
     return;
   }
 
-  if (typeof username !== 'string' || typeof password !== 'string') {
-    res.status(400).json({ error: 'username and password are required' });
+  const rows = await sql`SELECT id, account_id, email, password_hash FROM users WHERE email = ${email.toLowerCase().trim()}`;
+  const user = rows[0];
+  const passwordMatches = user ? await bcrypt.compare(password, user.password_hash as string) : false;
+
+  if (!user || !passwordMatches) {
+    res.status(401).json({ error: 'Incorrect email or password.' });
     return;
   }
 
-  const userMatches = username === expectedUser;
-  const passwordMatches = await bcrypt.compare(password, expectedHash);
-
-  if (!userMatches || !passwordMatches) {
-    res.status(401).json({ error: 'Incorrect username or password.' });
-    return;
-  }
-
-  const { token, maxAge } = createSessionToken(username, Boolean(remember));
+  const { token, maxAge } = createSessionToken({ userId: user.id as number, accountId: user.account_id as number, email: user.email as string }, Boolean(remember));
   setSessionCookie(res, token, maxAge);
-  res.status(200).json({ username });
+  res.status(200).json({ email: user.email });
 }

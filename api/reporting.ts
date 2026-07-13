@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db';
-import { withAuth } from './_auth';
+import { withAuth, Session } from './_auth';
 
-async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   if (req.method === 'POST') {
     const { workspace, name, kind } = req.body || {};
     if (!workspace || !name || !kind) return badRequest(res, 'workspace, name, kind are required');
-    const workspaceId = await getWorkspaceId(workspace);
+    const workspaceId = await getWorkspaceId(workspace, session.accountId);
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
     const rows = await sql`
       INSERT INTO reports (workspace_id, name, kind, report_date, status)
@@ -17,7 +17,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   const workspace = String(req.query.workspace || '');
   if (!workspace) return badRequest(res, 'workspace is required');
-  const workspaceId = await getWorkspaceId(workspace);
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
   const rows = await sql`
     SELECT id, name, kind, report_date AS date, status FROM reports
     WHERE workspace_id = ${workspaceId} ORDER BY created_at DESC`;

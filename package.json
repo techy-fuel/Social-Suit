@@ -9,8 +9,7 @@
     "preview": "vite preview",
     "seed": "tsx db/seed.ts",
     "typecheck:api": "tsc --noEmit -p api/tsconfig.json",
-    "test": "vitest run",
-    "hash-password": "tsx scripts/hash-password.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

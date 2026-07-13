@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db';
-import { withAuth } from './_auth';
+import { withAuth, Session } from './_auth';
 
-async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   const workspace = String(req.query.workspace || '');
   if (!workspace) return badRequest(res, 'workspace is required');
-  const workspaceId = await getWorkspaceId(workspace);
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
 
   const [stats, growth, byCountry, byCity, platformPosts] = await Promise.all([
     sql`SELECT key, label, value, delta, timeframe FROM stat_metrics WHERE workspace_id = ${workspaceId} ORDER BY sort_order`,

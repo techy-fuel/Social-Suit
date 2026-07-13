@@ -5,6 +5,12 @@ const COOKIE_NAME = 'ss_session';
 const DEFAULT_MAX_AGE = 60 * 60 * 8; // 8 hours
 const REMEMBER_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
+export interface Session {
+  userId: number;
+  accountId: number;
+  email: string;
+}
+
 function secret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s) throw new Error('Set SESSION_SECRET (any long random string) as an environment variable.');
@@ -15,9 +21,9 @@ function sign(value: string): string {
   return crypto.createHmac('sha256', secret()).update(value).digest('base64url');
 }
 
-export function createSessionToken(username: string, remember: boolean): { token: string; maxAge: number } {
+export function createSessionToken(session: Session, remember: boolean): { token: string; maxAge: number } {
   const maxAge = remember ? REMEMBER_MAX_AGE : DEFAULT_MAX_AGE;
-  const payload = JSON.stringify({ u: username, exp: Date.now() + maxAge * 1000 });
+  const payload = JSON.stringify({ u: session.userId, a: session.accountId, e: session.email, exp: Date.now() + maxAge * 1000 });
   const encoded = Buffer.from(payload).toString('base64url');
   const sig = sign(encoded);
   return { token: `${encoded}.${sig}`, maxAge };
@@ -43,7 +49,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
   return out;
 }
 
-export function getSessionUser(req: VercelRequest): string | null {
+export function getSession(req: VercelRequest): Session | null {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
@@ -53,19 +59,20 @@ export function getSessionUser(req: VercelRequest): string | null {
   try {
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
     if (typeof payload.exp !== 'number' || payload.exp < Date.now()) return null;
-    return typeof payload.u === 'string' ? payload.u : null;
+    if (typeof payload.u !== 'number' || typeof payload.a !== 'number' || typeof payload.e !== 'string') return null;
+    return { userId: payload.u, accountId: payload.a, email: payload.e };
   } catch {
     return null;
   }
 }
 
-export function withAuth(handler: (req: VercelRequest, res: VercelResponse) => unknown) {
+export function withAuth(handler: (req: VercelRequest, res: VercelResponse, session: Session) => unknown) {
   return async (req: VercelRequest, res: VercelResponse) => {
-    const user = getSessionUser(req);
-    if (!user) {
+    const session = getSession(req);
+    if (!session) {
       res.status(401).json({ error: 'Not signed in.' });
       return;
     }
-    await handler(req, res);
+    await handler(req, res, session);
   };
 }

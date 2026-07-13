@@ -1,16 +1,15 @@
 import React from 'react';
 import { Card } from '../components/core/Card';
 import { Input } from '../components/forms/Input';
-import { Checkbox } from '../components/forms/Checkbox';
 import { Button } from '../components/core/Button';
 import { useAuth } from '../AuthContext';
 import tfMark from '../assets/logo/tf-mark.svg';
 
-export function LoginScreen({ onSwitchToSignup }: { onSwitchToSignup: () => void }) {
-  const { login } = useAuth();
+export function SignupScreen({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
+  const { signup } = useAuth();
+  const [accountName, setAccountName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [remember, setRemember] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -19,7 +18,7 @@ export function LoginScreen({ onSwitchToSignup }: { onSwitchToSignup: () => void
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password, remember);
+      await signup(email, password, accountName);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -41,21 +40,21 @@ export function LoginScreen({ onSwitchToSignup }: { onSwitchToSignup: () => void
         <Card padding={24}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-lg)', color: 'var(--text)' }}>
-              Sign in
+              Create your account
             </div>
+            <Input label="Agency or team name" placeholder="e.g. Acme Social" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
             <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-            <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            <Input label="Password" type="password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             {error && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--red)' }}>{error}</div>}
-            <Checkbox label="Remember me for 30 days" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <Button type="submit" fullWidth disabled={submitting || !email || !password}>
-              {submitting ? 'Signing in…' : 'Sign in'}
+            <Button type="submit" fullWidth disabled={submitting || !email || password.length < 8}>
+              {submitting ? 'Creating account…' : 'Create account'}
             </Button>
           </form>
         </Card>
 
         <div style={{ textAlign: 'center', marginTop: 14, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Don't have an account?{' '}
-          <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToSignup(); }}>Sign up</a>
+          Already have an account?{' '}
+          <a href="#" onClick={(e) => { e.preventDefault(); onSwitchToLogin(); }}>Sign in</a>
         </div>
       </div>
     </div>

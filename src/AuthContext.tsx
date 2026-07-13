@@ -3,8 +3,9 @@ import React from 'react';
 interface AuthContextValue {
   authenticated: boolean;
   loading: boolean;
-  username: string | null;
-  login: (username: string, password: string, remember: boolean) => Promise<void>;
+  email: string | null;
+  login: (email: string, password: string, remember: boolean) => Promise<void>;
+  signup: (email: string, password: string, accountName: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -23,30 +24,38 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [username, setUsername] = React.useState<string | null>(null);
+  const [email, setEmail] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    request<{ username: string }>('me')
-      .then((r) => setUsername(r.username))
-      .catch(() => setUsername(null))
+    request<{ email: string }>('me')
+      .then((r) => setEmail(r.email))
+      .catch(() => setEmail(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const login = React.useCallback(async (u: string, password: string, remember: boolean) => {
-    const r = await request<{ username: string }>('login', {
+  const login = React.useCallback(async (loginEmail: string, password: string, remember: boolean) => {
+    const r = await request<{ email: string }>('login', {
       method: 'POST',
-      body: JSON.stringify({ username: u, password, remember }),
+      body: JSON.stringify({ email: loginEmail, password, remember }),
     });
-    setUsername(r.username);
+    setEmail(r.email);
+  }, []);
+
+  const signup = React.useCallback(async (signupEmail: string, password: string, accountName: string) => {
+    const r = await request<{ email: string }>('signup', {
+      method: 'POST',
+      body: JSON.stringify({ email: signupEmail, password, accountName }),
+    });
+    setEmail(r.email);
   }, []);
 
   const logout = React.useCallback(async () => {
     await request('logout', { method: 'POST' });
-    setUsername(null);
+    setEmail(null);
   }, []);
 
-  const value: AuthContextValue = { authenticated: !!username, loading, username, login, logout };
+  const value: AuthContextValue = { authenticated: !!email, loading, email, login, signup, logout };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

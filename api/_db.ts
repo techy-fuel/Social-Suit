@@ -7,8 +7,8 @@ if (!connectionString) {
 
 export const sql = neon(connectionString);
 
-export async function getWorkspaceId(key: string): Promise<number> {
-  const rows = await sql`SELECT id FROM workspaces WHERE key = ${key}`;
+export async function getWorkspaceId(key: string, accountId: number): Promise<number> {
+  const rows = await sql`SELECT id FROM workspaces WHERE key = ${key} AND account_id = ${accountId}`;
   if (rows.length === 0) throw new Error(`Unknown workspace: ${key}`);
   return rows[0].id as number;
 }

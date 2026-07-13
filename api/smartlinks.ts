@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db';
-import { withAuth } from './_auth';
+import { withAuth, Session } from './_auth';
 
-async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   if (req.method === 'POST') {
     const { workspace, label } = req.body || {};
     if (!workspace || !label) return badRequest(res, 'workspace and label are required');
-    const workspaceId = await getWorkspaceId(workspace);
+    const workspaceId = await getWorkspaceId(workspace, session.accountId);
     const rows = await sql`
       INSERT INTO smartlinks (workspace_id, label, clicks, sort_order)
       VALUES (${workspaceId}, ${label}, 0, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM smartlinks WHERE workspace_id = ${workspaceId}))
@@ -16,7 +16,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   const workspace = String(req.query.workspace || '');
   if (!workspace) return badRequest(res, 'workspace is required');
-  const workspaceId = await getWorkspaceId(workspace);
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
   const rows = await sql`SELECT id, label, clicks FROM smartlinks WHERE workspace_id = ${workspaceId} ORDER BY sort_order`;
   res.status(200).json(rows);
 }

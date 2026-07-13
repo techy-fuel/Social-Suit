@@ -21,6 +21,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   workspaces: () => request<Workspace[]>('workspaces'),
 
+  createWorkspace: (name: string) => request<Workspace>('workspaces', { method: 'POST', body: JSON.stringify({ name }) }),
+
   analytics: (workspace: string) => request<{
     stats: { key: string; label: string; value: string; delta: string; timeframe: string }[];
     growthSeries: { value: number }[];

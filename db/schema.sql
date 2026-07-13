@@ -1,12 +1,31 @@
--- SocialSuite schema. Every content table is scoped by workspace_id so the
--- workspace switcher in the UI drives real, per-client data.
+-- SocialSuite schema — multi-tenant: every account (a signed-up agency team)
+-- owns its own workspaces, and every content table is scoped by
+-- workspace_id, which is itself scoped by account_id. API routes must always
+-- filter workspace lookups by the caller's account_id — that's the tenant
+-- isolation boundary.
+
+CREATE TABLE IF NOT EXISTS accounts (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS workspaces (
   id SERIAL PRIMARY KEY,
-  key TEXT UNIQUE NOT NULL,
+  account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
   initials TEXT NOT NULL,
   name TEXT NOT NULL,
-  sort_order INT NOT NULL DEFAULT 0
+  sort_order INT NOT NULL DEFAULT 0,
+  UNIQUE (account_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS stat_metrics (
