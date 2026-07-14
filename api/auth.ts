@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from './_db';
-import { getSupabaseAdmin, supabaseAnon } from './_supabase';
-import { createSessionToken, setSessionCookie, clearSessionCookie, getSession } from './_auth';
+import { sql } from './_db.js';
+import { getSupabaseAdmin, supabaseAnon } from './_supabase.js';
+import { createSessionToken, setSessionCookie, clearSessionCookie, getSession } from './_auth.js';
 
 // Consolidated into one function (Vercel Hobby plan caps at 12 serverless
 // functions per deployment) — dispatches on ?action= instead of one file

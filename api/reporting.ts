@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql, getWorkspaceId, badRequest } from './_db';
-import { withAuth, Session } from './_auth';
+import { sql, getWorkspaceId, badRequest } from './_db.js';
+import { withAuth, Session } from './_auth.js';
 
 async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   if (req.method === 'DELETE') {

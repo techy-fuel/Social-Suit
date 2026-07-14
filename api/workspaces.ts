@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql, badRequest } from './_db';
-import { withAuth, Session } from './_auth';
+import { sql, badRequest } from './_db.js';
+import { withAuth, Session } from './_auth.js';
 
 function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'workspace';
