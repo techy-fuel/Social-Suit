@@ -16,14 +16,25 @@ function getPool(): Pool {
   if (!connectionString) {
     throw new Error('Set DATABASE_URL or POSTGRES_URL (Vercel Storage -> your database -> Connect to project).');
   }
-  _pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
+  // Supabase's Postgres presents a cert chain that Node's default trust
+  // store won't validate; rejectUnauthorized alone has been unreliable here,
+  // so also skip hostname/chain verification outright via checkServerIdentity.
+  _pool = new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false, checkServerIdentity: () => undefined },
+  });
   return _pool;
 }
 
 export async function sql(strings: TemplateStringsArray, ...values: unknown[]): Promise<any[]> {
   const text = strings.reduce((acc, str, i) => acc + (i > 0 ? `$${i}` : '') + str, '');
-  const result = await getPool().query(text, values);
-  return result.rows;
+  try {
+    const result = await getPool().query(text, values);
+    return result.rows;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Database error: ${msg}`);
+  }
 }
 
 export async function getWorkspaceId(key: string, accountId: number): Promise<number> {
