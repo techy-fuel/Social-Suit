@@ -68,11 +68,18 @@ export function getSession(req: VercelRequest): Session | null {
 
 export function withAuth(handler: (req: VercelRequest, res: VercelResponse, session: Session) => unknown) {
   return async (req: VercelRequest, res: VercelResponse) => {
-    const session = getSession(req);
-    if (!session) {
-      res.status(401).json({ error: 'Not signed in.' });
-      return;
+    try {
+      const session = getSession(req);
+      if (!session) {
+        res.status(401).json({ error: 'Not signed in.' });
+        return;
+      }
+      await handler(req, res, session);
+    } catch (err) {
+      console.error('request handler error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err instanceof Error ? err.message : 'Unexpected server error.' });
+      }
     }
-    await handler(req, res, session);
   };
 }

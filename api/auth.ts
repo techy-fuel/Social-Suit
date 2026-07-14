@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from './_db';
-import { supabaseAdmin, supabaseAnon } from './_supabase';
+import { getSupabaseAdmin, supabaseAnon } from './_supabase';
 import { createSessionToken, setSessionCookie, clearSessionCookie, getSession } from './_auth';
 
 // Consolidated into one function (Vercel Hobby plan caps at 12 serverless
@@ -53,6 +53,7 @@ async function signup(req: VercelRequest, res: VercelResponse) {
   // still sign the user in immediately below rather than gating on it, so
   // a slow/blocked confirmation email doesn't lock someone out of a product
   // they just signed up for.
+  const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: normalizedEmail,
     password,
@@ -81,7 +82,7 @@ async function signup(req: VercelRequest, res: VercelResponse) {
       SELECT id, account_id, email FROM new_user`;
   } catch (err) {
     // Don't orphan a Supabase auth user if our own tables fail to write.
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {});
+    await getSupabaseAdmin().auth.admin.deleteUser(data.user.id).catch(() => {});
     throw err;
   }
 
@@ -121,23 +122,32 @@ async function requestPasswordReset(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const action = String(req.query.action || '');
 
-  if (action === 'me') return me(req, res);
+  try {
+    if (action === 'me') return await me(req, res);
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
 
-  switch (action) {
-    case 'login':
-      return login(req, res);
-    case 'signup':
-      return signup(req, res);
-    case 'logout':
-      return logout(req, res);
-    case 'request-password-reset':
-      return requestPasswordReset(req, res);
-    default:
-      res.status(400).json({ error: 'Unknown auth action.' });
+    switch (action) {
+      case 'login':
+        return await login(req, res);
+      case 'signup':
+        return await signup(req, res);
+      case 'logout':
+        return await logout(req, res);
+      case 'request-password-reset':
+        return await requestPasswordReset(req, res);
+      default:
+        res.status(400).json({ error: 'Unknown auth action.' });
+    }
+  } catch (err) {
+    // Surface the real cause instead of a bare 500 — this endpoint runs
+    // before a session exists, so there's no sensitive per-user state to
+    // leak here, only server misconfiguration (missing env vars, schema
+    // not applied yet, etc).
+    console.error('auth handler error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unexpected server error.' });
   }
 }
