@@ -69,7 +69,7 @@ npm run seed               # (re)seed the database — needs raw Postgres networ
 - `src/App.tsx` — shell: sidebar + top bar + workspace switcher + routed screens; also handles the zero-workspace onboarding state for a fresh signup.
 - `src/AuthContext.tsx`, `src/WorkspaceContext.tsx`, `src/ToastContext.tsx` — app-level state.
 - `src/api.ts`, `src/hooks.ts` — typed API client and a small `useApi` data-fetching hook.
-- `api/` — Vercel serverless functions (one per resource), `_db.ts` (Postgres client) and `_auth.ts` (session cookie + `withAuth`/tenant-scoping helpers) are shared, not deployed as routes.
+- `api/` — Vercel serverless functions (one per resource), `_db.ts` (Postgres client) and `_auth.ts` (session cookie + `withAuth`/tenant-scoping helpers) are shared, not deployed as routes. **Vercel's Hobby plan caps a deployment at 12 serverless functions** — `auth.ts` deliberately dispatches login/signup/logout/me via `?action=` instead of one file each, to leave headroom. Keep this in mind before adding new top-level files here; prefer adding an `?action=` branch to an existing route over a new file if you're close to the limit (`ls api/*.ts | grep -v '^_'` to count).
 - `db/schema.sql`, `db/seed.ts` — database schema and seed data (needs raw Postgres network access to run).
 - `db/generate-seed-sql.ts` — same schema/seed data, but emits a plain `.sql` file you can paste into a SQL editor when raw Postgres access isn't available.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.

@@ -28,14 +28,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    request<{ email: string }>('me')
+    request<{ email: string }>('auth?action=me')
       .then((r) => setEmail(r.email))
       .catch(() => setEmail(null))
       .finally(() => setLoading(false));
   }, []);
 
   const login = React.useCallback(async (loginEmail: string, password: string, remember: boolean) => {
-    const r = await request<{ email: string }>('login', {
+    const r = await request<{ email: string }>('auth?action=login', {
       method: 'POST',
       body: JSON.stringify({ email: loginEmail, password, remember }),
     });
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signup = React.useCallback(async (signupEmail: string, password: string, accountName: string) => {
-    const r = await request<{ email: string }>('signup', {
+    const r = await request<{ email: string }>('auth?action=signup', {
       method: 'POST',
       body: JSON.stringify({ email: signupEmail, password, accountName }),
     });
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = React.useCallback(async () => {
-    await request('logout', { method: 'POST' });
+    await request('auth?action=logout', { method: 'POST' });
     setEmail(null);
   }, []);
 
