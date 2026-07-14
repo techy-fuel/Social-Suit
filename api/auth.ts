@@ -1,11 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import bcrypt from 'bcryptjs';
 import { sql } from './_db';
+import { supabaseAdmin, supabaseAnon } from './_supabase';
 import { createSessionToken, setSessionCookie, clearSessionCookie, getSession } from './_auth';
 
 // Consolidated into one function (Vercel Hobby plan caps at 12 serverless
 // functions per deployment) — dispatches on ?action= instead of one file
-// per auth endpoint.
+// per auth endpoint. Credentials and email delivery (confirmation, password
+// reset) are handled by Supabase Auth; our own signed cookie remains the
+// actual app session, and `users` just maps a Supabase auth user to a
+// tenant (account).
+
 async function login(req: VercelRequest, res: VercelResponse) {
   const { email, password, remember } = req.body || {};
   if (typeof email !== 'string' || typeof password !== 'string') {
@@ -13,18 +17,22 @@ async function login(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const rows = await sql`SELECT id, account_id, email, password_hash FROM users WHERE email = ${email.toLowerCase().trim()}`;
-  const user = rows[0];
-  const passwordMatches = user ? await bcrypt.compare(password, user.password_hash as string) : false;
-
-  if (!user || !passwordMatches) {
+  const { data, error } = await supabaseAnon.auth.signInWithPassword({ email: email.toLowerCase().trim(), password });
+  if (error || !data.user) {
     res.status(401).json({ error: 'Incorrect email or password.' });
     return;
   }
 
-  const { token, maxAge } = createSessionToken({ userId: user.id as number, accountId: user.account_id as number, email: user.email as string }, Boolean(remember));
+  const rows = await sql`SELECT id, account_id, email FROM users WHERE supabase_user_id = ${data.user.id}`;
+  const mapping = rows[0];
+  if (!mapping) {
+    res.status(401).json({ error: "Account isn't fully set up yet. Contact support." });
+    return;
+  }
+
+  const { token, maxAge } = createSessionToken({ userId: mapping.id, accountId: mapping.account_id, email: mapping.email }, Boolean(remember));
   setSessionCookie(res, token, maxAge);
-  res.status(200).json({ email: user.email });
+  res.status(200).json({ email: mapping.email });
 }
 
 async function signup(req: VercelRequest, res: VercelResponse) {
@@ -40,7 +48,25 @@ async function signup(req: VercelRequest, res: VercelResponse) {
 
   const normalizedEmail = email.toLowerCase().trim();
   const name = typeof accountName === 'string' && accountName.trim() ? accountName.trim() : `${normalizedEmail.split('@')[0]}'s workspace`;
-  const passwordHash = await bcrypt.hash(password, 10);
+
+  // email_confirm: false sends Supabase's built-in confirmation email; we
+  // still sign the user in immediately below rather than gating on it, so
+  // a slow/blocked confirmation email doesn't lock someone out of a product
+  // they just signed up for.
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: normalizedEmail,
+    password,
+    email_confirm: false,
+  });
+
+  if (error || !data.user) {
+    if (error && /already.*registered|already.*exists/i.test(error.message)) {
+      res.status(409).json({ error: 'An account with that email already exists.' });
+      return;
+    }
+    res.status(400).json({ error: error?.message || 'Could not create account.' });
+    return;
+  }
 
   let rows;
   try {
@@ -48,21 +74,19 @@ async function signup(req: VercelRequest, res: VercelResponse) {
       WITH new_account AS (
         INSERT INTO accounts (name) VALUES (${name}) RETURNING id
       ), new_user AS (
-        INSERT INTO users (account_id, email, password_hash)
-        SELECT id, ${normalizedEmail}, ${passwordHash} FROM new_account
+        INSERT INTO users (account_id, supabase_user_id, email)
+        SELECT id, ${data.user.id}, ${normalizedEmail} FROM new_account
         RETURNING id, account_id, email
       )
       SELECT id, account_id, email FROM new_user`;
   } catch (err) {
-    if (err instanceof Error && /unique/i.test(err.message)) {
-      res.status(409).json({ error: 'An account with that email already exists.' });
-      return;
-    }
+    // Don't orphan a Supabase auth user if our own tables fail to write.
+    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {});
     throw err;
   }
 
   const user = rows[0];
-  const { token, maxAge } = createSessionToken({ userId: user.id as number, accountId: user.account_id as number, email: user.email as string }, false);
+  const { token, maxAge } = createSessionToken({ userId: user.id, accountId: user.account_id, email: user.email }, false);
   setSessionCookie(res, token, maxAge);
   res.status(201).json({ email: user.email });
 }
@@ -79,6 +103,19 @@ async function me(req: VercelRequest, res: VercelResponse) {
     return;
   }
   res.status(200).json({ email: session.email });
+}
+
+async function requestPasswordReset(req: VercelRequest, res: VercelResponse) {
+  const { email } = req.body || {};
+  if (typeof email === 'string' && email.includes('@')) {
+    const siteUrl = process.env.PUBLIC_SITE_URL || `https://${req.headers.host}`;
+    await supabaseAnon.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
+      redirectTo: `${siteUrl}/reset-password`,
+    });
+  }
+  // Always report success, whether or not the email is registered, so this
+  // endpoint can't be used to enumerate accounts.
+  res.status(200).json({ ok: true });
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -98,6 +135,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return signup(req, res);
     case 'logout':
       return logout(req, res);
+    case 'request-password-reset':
+      return requestPasswordReset(req, res);
     default:
       res.status(400).json({ error: 'Unknown auth action.' });
   }

@@ -13,11 +13,13 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Credentials live in Supabase Auth (auth.users), not here — this table
+-- just maps a Supabase auth user to our own tenant (account).
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  supabase_user_id UUID UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -166,9 +168,9 @@ CREATE TABLE IF NOT EXISTS tracker_sessions (
 
 BEGIN;
 
-INSERT INTO accounts (name) VALUES ('TechyFuel (demo)');
-INSERT INTO users (account_id, email, password_hash)
-  SELECT id, 'demo@techyfuel.example', '$2a$10$maQTWiufdY3k0txz4V8CV.mhg9lzU6lYjqqUiphXlT2QFvfUuClc.' FROM accounts WHERE name = 'TechyFuel (demo)';
+INSERT INTO accounts (name) VALUES ('TechyFuel (demo)') ON CONFLICT DO NOTHING;
+-- The demo login itself (Supabase Auth user + users row) is created by
+-- db/seed-via-api.ts, not here — this file only seeds workspace content.
 INSERT INTO workspaces (account_id, key, initials, name, sort_order)
   SELECT id, 'hira-institute', 'HI', 'HIRA Institute', 0 FROM accounts WHERE name = 'TechyFuel (demo)'
   ON CONFLICT (account_id, key) DO UPDATE SET initials=EXCLUDED.initials, name=EXCLUDED.name;

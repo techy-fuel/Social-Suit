@@ -1,20 +1,7 @@
-// One-off seed script — run with: DATABASE_URL=... npx tsx db/seed.ts
-// Populates all 9 screens' tables with realistic per-workspace starting data.
-import { Pool } from 'pg';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-if (!connectionString) {
-  console.error('Set DATABASE_URL or POSTGRES_URL before running the seed script.');
-  process.exit(1);
-}
-
-const pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false } });
-
-type Workspace = { key: string; initials: string; name: string };
+// Shared seed dataset — four Islamic educational institution clients, used
+// both by db/generate-seed-sql.ts (SQL-editor-paste path) and
+// db/seed-via-api.ts (Supabase HTTPS path).
+export type Workspace = { key: string; initials: string; name: string };
 
 const workspaces: Workspace[] = [
   { key: 'hira-institute', initials: 'HI', name: 'HIRA Institute' },
@@ -23,8 +10,6 @@ const workspaces: Workspace[] = [
   { key: 'al-rehman', initials: 'AR', name: 'Al Rehman Academy' },
 ];
 
-// Per-workspace content. Numbers are hand-varied (not a mechanical multiplier)
-// so each client workspace actually reads differently when you switch to it.
 const data: Record<string, any> = {
   'hira-institute': {
     stats: [
@@ -306,93 +291,13 @@ const data: Record<string, any> = {
   },
 };
 
-// Deterministic best-time-to-post heat, same heuristic the UI used to compute
-// client-side — now persisted per workspace so it's real, editable data.
 function heat(day: number, hour: number) {
   const seed = (day * 13 + hour * 7) % 23;
   return Math.min(1, seed / 22);
 }
 
-async function main() {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+export const DEMO_ACCOUNT_NAME = 'TechyFuel (demo)';
+export const DEMO_EMAIL = 'demo@techyfuel.example';
+export const DEMO_PASSWORD = 'DiPWkN8y7B7';
 
-    for (const [i, ws] of workspaces.entries()) {
-      const { rows } = await client.query(
-        `INSERT INTO workspaces (key, initials, name, sort_order) VALUES ($1,$2,$3,$4)
-         ON CONFLICT (key) DO UPDATE SET initials=EXCLUDED.initials, name=EXCLUDED.name
-         RETURNING id`,
-        [ws.key, ws.initials, ws.name, i]
-      );
-      const workspaceId = rows[0].id;
-      const d = data[ws.key];
-
-      // Clear existing content for this workspace so the seed is re-runnable.
-      for (const table of ['stat_metrics', 'growth_points', 'followers_by_country', 'followers_by_city', 'platform_posts', 'heatmap_cells', 'scheduled_posts', 'connections', 'conversations', 'smartlinks', 'ads_campaigns', 'reports', 'tracker_sessions']) {
-        await client.query(`DELETE FROM ${table} WHERE workspace_id = $1`, [workspaceId]);
-      }
-
-      for (const [idx, s] of d.stats.entries()) {
-        await client.query(
-          `INSERT INTO stat_metrics (workspace_id, key, label, value, delta, sort_order) VALUES ($1,$2,$3,$4,$5,$6)`,
-          [workspaceId, s.key, s.label, s.value, s.delta, idx]
-        );
-      }
-      for (const [idx, v] of d.growth.entries()) {
-        await client.query(`INSERT INTO growth_points (workspace_id, idx, value) VALUES ($1,$2,$3)`, [workspaceId, idx, v]);
-      }
-      for (const [idx, c] of d.byCountry.entries()) {
-        await client.query(`INSERT INTO followers_by_country (workspace_id, label, value, sort_order) VALUES ($1,$2,$3,$4)`, [workspaceId, c.label, c.value, idx]);
-      }
-      for (const [idx, c] of d.byCity.entries()) {
-        await client.query(`INSERT INTO followers_by_city (workspace_id, city, country, followers, sort_order) VALUES ($1,$2,$3,$4,$5)`, [workspaceId, c.city, c.country, c.followers, idx]);
-      }
-      for (const p of d.platformPosts) {
-        await client.query(`INSERT INTO platform_posts (workspace_id, platform, label, posts, reach) VALUES ($1,$2,$3,$4,$5)`, [workspaceId, p.platform, p.label, p.posts, p.reach]);
-      }
-      for (let day = 0; day < 7; day++) {
-        for (let hour = 8; hour <= 19; hour++) {
-          await client.query(`INSERT INTO heatmap_cells (workspace_id, day, hour, value) VALUES ($1,$2,$3,$4) ON CONFLICT (workspace_id, day, hour) DO UPDATE SET value = EXCLUDED.value`, [workspaceId, day, hour, heat(day, hour)]);
-        }
-      }
-      for (const p of d.scheduledPosts) {
-        await client.query(`INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, caption) VALUES ($1,$2,$3,$4,$5,$6)`, [workspaceId, p.day, p.hour, p.time, p.platform, p.caption]);
-      }
-      for (const [idx, c] of d.connections.entries()) {
-        await client.query(`INSERT INTO connections (workspace_id, platform, label, status, account, sort_order) VALUES ($1,$2,$3,$4,$5,$6)`, [workspaceId, c.platform, c.label, c.status, c.account, idx]);
-      }
-      for (const c of d.conversations) {
-        await client.query(`INSERT INTO conversations (workspace_id, platform, name, preview, time_label, unread, resolved) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [workspaceId, c.platform, c.name, c.preview, c.time, c.unread, c.resolved]);
-      }
-      for (const [idx, l] of d.smartlinks.entries()) {
-        await client.query(`INSERT INTO smartlinks (workspace_id, label, clicks, sort_order) VALUES ($1,$2,$3,$4)`, [workspaceId, l.label, l.clicks, idx]);
-      }
-      for (const a of d.ads) {
-        await client.query(`INSERT INTO ads_campaigns (workspace_id, channel, name, status, spend, budget) VALUES ($1,$2,$3,$4,$5,$6)`, [workspaceId, a.channel, a.name, a.status, a.spend, a.budget]);
-      }
-      for (const r of d.reports) {
-        await client.query(`INSERT INTO reports (workspace_id, name, kind, report_date, status) VALUES ($1,$2,$3,$4,$5)`, [workspaceId, r.name, r.kind, r.date, r.status]);
-      }
-      for (const t of d.tracker) {
-        await client.query(`INSERT INTO tracker_sessions (workspace_id, hashtag, platform, status, started, mentions) VALUES ($1,$2,$3,$4,$5,$6)`, [workspaceId, t.hashtag, t.platform, t.status, t.started, t.mentions]);
-      }
-      console.log(`Seeded ${ws.name}`);
-    }
-
-    await client.query('COMMIT');
-    console.log('Seed complete.');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-    await pool.end();
-  }
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export { workspaces, data, heat };

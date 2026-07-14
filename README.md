@@ -29,36 +29,43 @@ workspaces can all be removed from the UI, not just created).
 ## Stack
 
 React 18 + TypeScript + Vite, `react-router-dom` for navigation. Vercel
-serverless functions under `api/` talk to Postgres via `@neondatabase/serverless`.
-Auth is real signup/login (bcrypt-hashed password + signed session cookie) — every
-signup creates its own `account` (tenant) and gets an empty workspace list to
-populate; see below. Icons via `lucide-react`. Unit tests via Vitest +
-React Testing Library; CI runs build/typecheck/tests on every push (see
-`.github/workflows/ci.yml`).
+serverless functions under `api/` talk to Postgres (hosted on Supabase) via
+plain `pg`. Credentials live in **Supabase Auth**, not our own tables — signup
+and login call Supabase's Admin/Auth API server-side, and our own signed
+session cookie (`api/_auth.ts`) is what the app actually checks on each
+request. Every signup creates its own `account` (tenant), a `users` row
+mapping the Supabase auth user to that account, and an empty workspace list to
+populate; see below. Password reset is Supabase's built-in email flow. Icons
+via `lucide-react`. Unit tests via Vitest + React Testing Library; CI runs
+build/typecheck/tests on every push (see `.github/workflows/ci.yml`).
 
 ## Setting up the database
 
-1. In the Vercel dashboard, open the project → **Storage** → **Create Database** → **Postgres**, then **Connect** it to this project. This auto-injects `DATABASE_URL`/`POSTGRES_URL` on the Vercel project.
-2. Run `npm run seed` locally against that connection string (needs raw Postgres/TCP network access), **or** — if your network only allows HTTPS (e.g. a sandboxed environment) — run `npx tsx db/generate-seed-sql.ts` to produce `db/schema_and_seed.sql`, then paste its contents into your Postgres provider's SQL editor (e.g. Supabase → SQL Editor) and run it. Either path creates the schema plus a demo account/login populated with the four example workspaces.
-3. Copy `.env.example` to `.env.local` and fill in the connection string, for local dev.
+1. Create a Postgres database on Supabase (or use Vercel Storage's Supabase integration), then set `DATABASE_URL`/`POSTGRES_URL` on the Vercel project to its connection string.
+2. Paste the contents of `db/schema_and_seed.sql` into Supabase's SQL Editor and run it — this drops/recreates every table and seeds four example workspaces under one demo `account` (no login yet, since credentials aren't raw SQL rows anymore). Regenerate this file with `npx tsx db/generate-seed-sql.ts` if `db/seed-data.ts` changes.
+3. To also create the demo *login* (and reseed the same content over HTTPS instead of SQL), run `SUPABASE_SERVICE_ROLE_KEY=... npx tsx db/seed-via-api.ts` from a machine with normal internet access — it uses Supabase's Admin API (`auth.admin.createUser`) plus PostgREST, so it needs no raw Postgres/TCP access, only HTTPS to `*.supabase.co`. Prints the demo email/password on success. This step is optional — real users can just sign up from the app instead.
+4. Copy `.env.example` to `.env.local` and fill in the connection string, for local dev.
 
 ## Setting up auth
 
-No separate credentials to configure — anyone can sign up from the app itself (Sign in screen → "Sign up"). You only need one environment variable:
+Auth is fully backed by Supabase Auth. Environment variables needed:
 
-- `SESSION_SECRET` — any long random string, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Set it locally in `.env.local` and on the Vercel project under Settings → Environment Variables.
+- `SESSION_SECRET` — any long random string, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. This signs our own app-session cookie (separate from Supabase's own session).
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase dashboard → Settings → API → `service_role` key. Used server-side only (`api/_supabase.ts`) to create/delete auth users on signup; never expose this to the client.
 
-The demo account seeded in step 2 above logs in with the credentials documented at the top of `db/generate-seed-sql.ts`.
+Set both locally in `.env.local` and on the Vercel project under Settings → Environment Variables.
+
+In the Supabase dashboard, under **Authentication → URL Configuration**, set the Site URL and add a Redirect URL for `<your-deployed-domain>/reset-password` — this is where Supabase's password-recovery email link sends the user, and `src/screens/ResetPasswordScreen.tsx` picks up the `PASSWORD_RECOVERY` event from there.
 
 ## Getting started
 
 ```bash
 npm install
-npm run dev              # http://localhost:5173 (needs SESSION_SECRET + DATABASE_URL)
+npm run dev              # http://localhost:5173 (needs SESSION_SECRET + DATABASE_URL + SUPABASE_SERVICE_ROLE_KEY)
 npm run build             # typecheck + production build
 npm run typecheck:api     # typecheck the serverless API routes
 npm test                  # unit tests
-npm run seed               # (re)seed the database — needs raw Postgres network access
+npm run seed               # create the demo login + reseed content over HTTPS (needs SUPABASE_SERVICE_ROLE_KEY)
 ```
 
 ## Structure
@@ -69,15 +76,15 @@ npm run seed               # (re)seed the database — needs raw Postgres networ
 - `src/App.tsx` — shell: sidebar + top bar + workspace switcher + routed screens; also handles the zero-workspace onboarding state for a fresh signup.
 - `src/AuthContext.tsx`, `src/WorkspaceContext.tsx`, `src/ToastContext.tsx` — app-level state.
 - `src/api.ts`, `src/hooks.ts` — typed API client and a small `useApi` data-fetching hook.
-- `api/` — Vercel serverless functions (one per resource), `_db.ts` (Postgres client) and `_auth.ts` (session cookie + `withAuth`/tenant-scoping helpers) are shared, not deployed as routes. **Vercel's Hobby plan caps a deployment at 12 serverless functions** — `auth.ts` deliberately dispatches login/signup/logout/me via `?action=` instead of one file each, to leave headroom. Keep this in mind before adding new top-level files here; prefer adding an `?action=` branch to an existing route over a new file if you're close to the limit (`ls api/*.ts | grep -v '^_'` to count).
-- `db/schema.sql`, `db/seed.ts` — database schema and seed data (needs raw Postgres network access to run).
-- `db/generate-seed-sql.ts` — same schema/seed data, but emits a plain `.sql` file you can paste into a SQL editor when raw Postgres access isn't available.
+- `api/` — Vercel serverless functions (one per resource), `_db.ts` (Postgres client), `_supabase.ts` (Supabase admin/anon clients), and `_auth.ts` (session cookie + `withAuth`/tenant-scoping helpers) are shared, not deployed as routes. **Vercel's Hobby plan caps a deployment at 12 serverless functions** — `auth.ts` deliberately dispatches login/signup/logout/me/request-password-reset via `?action=` instead of one file each, to leave headroom. Keep this in mind before adding new top-level files here; prefer adding an `?action=` branch to an existing route over a new file if you're close to the limit (`ls api/*.ts | grep -v '^_'` to count).
+- `db/schema.sql`, `db/seed-data.ts` — database schema and the shared seed dataset (four example workspaces).
+- `db/generate-seed-sql.ts` — emits `db/schema_and_seed.sql`, a plain `.sql` file to paste into Supabase's SQL Editor (schema + workspace content only, no login).
+- `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
 ## Known gaps
 
 - No real social platform integration (Meta/TikTok/Google APIs) — this manages its own data, it doesn't publish anywhere.
-- No email verification or password reset flow — signup is instant, and there's no way to recover a forgotten password yet.
 - One user per account — no team invites/multiple users per tenant yet.
 - No billing/subscription system — every account has unlimited access.
 - No pagination — list endpoints (conversations, scheduled posts, etc.) return everything for a workspace in one call.

@@ -15,6 +15,7 @@ import { useAuth } from './AuthContext';
 import { AuthGate } from './screens/AuthGate';
 import { TermsScreen } from './screens/TermsScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
+import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 import tfMark from './assets/logo/tf-mark.svg';
 
 import { AnalyticsScreen } from './screens/AnalyticsScreen';
@@ -276,6 +277,7 @@ export default function App() {
     <Routes>
       <Route path="/terms" element={<TermsScreen />} />
       <Route path="/privacy" element={<PrivacyScreen />} />
+      <Route path="/reset-password" element={<ResetPasswordScreen />} />
       <Route path="*" element={authenticated ? <AppShell /> : <AuthGate />} />
     </Routes>
   );

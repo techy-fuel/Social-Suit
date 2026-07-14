@@ -7,6 +7,7 @@ interface AuthContextValue {
   login: (email: string, password: string, remember: boolean) => Promise<void>;
   signup: (email: string, password: string, accountName: string) => Promise<void>;
   logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
@@ -55,7 +56,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setEmail(null);
   }, []);
 
-  const value: AuthContextValue = { authenticated: !!email, loading, email, login, signup, logout };
+  const requestPasswordReset = React.useCallback(async (resetEmail: string) => {
+    await request('auth?action=request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email: resetEmail }),
+    });
+  }, []);
+
+  const value: AuthContextValue = { authenticated: !!email, loading, email, login, signup, logout, requestPasswordReset };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

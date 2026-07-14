@@ -10,11 +10,13 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Credentials live in Supabase Auth (auth.users), not here — this table
+-- just maps a Supabase auth user to our own tenant (account).
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   account_id INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  supabase_user_id UUID UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
