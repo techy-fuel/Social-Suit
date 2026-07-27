@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from './_db.js';
 import { getSupabaseAdmin, supabaseAnon } from './_supabase.js';
-import { createSessionToken, setSessionCookie, clearSessionCookie, getSession } from './_auth.js';
+import { createSessionToken, setSessionCookie, clearSessionCookie, getSession, describeError } from './_auth.js';
 
 // Consolidated into one function (Vercel Hobby plan caps at 12 serverless
 // functions per deployment) — dispatches on ?action= instead of one file
@@ -148,6 +148,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // leak here, only server misconfiguration (missing env vars, schema
     // not applied yet, etc).
     console.error('auth handler error:', err);
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unexpected server error.' });
+    res.status(500).json({ error: describeError(err) });
   }
 }

@@ -66,6 +66,16 @@ export function getSession(req: VercelRequest): Session | null {
   }
 }
 
+// Node's fetch (undici) throws a generic "fetch failed" and nests the real
+// reason (DNS failure, connection refused, TLS error, ...) in `.cause` —
+// surface that too, or these errors are undebuggable from the client alone.
+export function describeError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Unexpected server error.';
+  const cause = (err as { cause?: unknown }).cause;
+  const causeMsg = cause instanceof Error ? cause.message : cause ? String(cause) : null;
+  return causeMsg ? `${err.message}: ${causeMsg}` : err.message;
+}
+
 export function withAuth(handler: (req: VercelRequest, res: VercelResponse, session: Session) => unknown) {
   return async (req: VercelRequest, res: VercelResponse) => {
     try {
@@ -78,7 +88,7 @@ export function withAuth(handler: (req: VercelRequest, res: VercelResponse, sess
     } catch (err) {
       console.error('request handler error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: err instanceof Error ? err.message : 'Unexpected server error.' });
+        res.status(500).json({ error: describeError(err) });
       }
     }
   };
