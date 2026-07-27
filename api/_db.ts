@@ -21,9 +21,16 @@ function getPool(): Pool {
   // suppressed Node's TLS chain validation for it, so also disable
   // certificate checking at the process level for this connection.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  // Each serverless invocation handles one request at a time and Vercel can
+  // run many instances concurrently, so keep each instance's own pool tiny
+  // and release idle connections fast — otherwise it's easy to exceed a
+  // pooler's total connection cap (e.g. Supabase's session-mode pooler caps
+  // at 15) well before traffic is actually high.
   _pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
+    max: 1,
+    idleTimeoutMillis: 10_000,
   });
   return _pool;
 }
