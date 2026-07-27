@@ -16,12 +16,14 @@ function getPool(): Pool {
   if (!connectionString) {
     throw new Error('Set DATABASE_URL or POSTGRES_URL (Vercel Storage -> your database -> Connect to project).');
   }
-  // Supabase's Postgres presents a cert chain that Node's default trust
-  // store won't validate; rejectUnauthorized alone has been unreliable here,
-  // so also skip hostname/chain verification outright via checkServerIdentity.
+  // Supabase's Postgres presents a self-signed cert in its chain. Passing
+  // `ssl: { rejectUnauthorized: false }` to Pool alone hasn't reliably
+  // suppressed Node's TLS chain validation for it, so also disable
+  // certificate checking at the process level for this connection.
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   _pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false, checkServerIdentity: () => undefined },
+    ssl: { rejectUnauthorized: false },
   });
   return _pool;
 }
