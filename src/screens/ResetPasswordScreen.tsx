@@ -15,6 +15,13 @@ export function ResetPasswordScreen() {
   const [done, setDone] = React.useState(false);
 
   React.useEffect(() => {
+    // supabase-js processes the recovery tokens from the URL hash as soon as
+    // the client is created, which can happen before this listener is
+    // attached — so the PASSWORD_RECOVERY event may already have fired and
+    // been missed. Checking the hash directly covers that race.
+    if (window.location.hash.includes('type=recovery')) {
+      setReady(true);
+    }
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') setReady(true);
     });
