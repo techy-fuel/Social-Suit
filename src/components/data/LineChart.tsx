@@ -12,10 +12,14 @@ export interface LineChartProps {
 }
 
 export function LineChart({ series, width = 560, height = 200, color = 'var(--accent-primary)' }: LineChartProps) {
+  if (series.length === 0) {
+    return <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }} />;
+  }
+
   const max = Math.max(...series.map((d) => d.value));
   const min = Math.min(...series.map((d) => d.value));
   const pad = 8;
-  const stepX = (width - pad * 2) / (series.length - 1);
+  const stepX = (width - pad * 2) / Math.max(series.length - 1, 1);
   const scaleY = (v: number) => height - pad - ((v - min) / (max - min || 1)) * (height - pad * 2);
 
   const points = series.map((d, i) => [pad + i * stepX, scaleY(d.value)]);
