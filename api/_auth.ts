@@ -49,6 +49,24 @@ function parseCookies(header: string | undefined): Record<string, string> {
   return out;
 }
 
+// Signed, tamper-proof payload for OAuth `state` params — proves the
+// callback request corresponds to a `start` we actually issued (CSRF
+// protection), without needing server-side session storage.
+export function signState(payload: Record<string, unknown>): string {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${encoded}.${sign(encoded)}`;
+}
+
+export function verifyState<T = Record<string, unknown>>(token: string): T | null {
+  const [encoded, sig] = token.split('.');
+  if (!encoded || !sig || sign(encoded) !== sig) return null;
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function getSession(req: VercelRequest): Session | null {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[COOKIE_NAME];

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '../components/core/Button';
 import { Badge } from '../components/core/Badge';
 import { PlatformIcon } from '../components/data/PlatformIcon';
@@ -7,6 +8,11 @@ import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
 import { api } from '../api';
+
+// These two are wired to a real Meta OAuth flow (api/oauth.ts); everything
+// else still just flips a status flag until that platform's integration
+// is built.
+const META_OAUTH_LABELS = new Set(['Facebook', 'Instagram']);
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {
   connected: 'positive',
@@ -26,6 +32,24 @@ export function ConnectionsScreen() {
   const [pendingId, setPendingId] = React.useState<number | null>(null);
   const [managing, setManaging] = React.useState<{ id: number; label: string } | null>(null);
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  React.useEffect(() => {
+    const connected = searchParams.get('connected');
+    const oauthError = searchParams.get('oauth_error');
+    if (connected) {
+      showToast({ tone: 'positive', title: `Connected: ${connected.split(',').join(', ')}` });
+      refetch();
+    } else if (oauthError) {
+      showToast({ tone: 'error', title: "Couldn't connect", description: oauthError });
+    }
+    if (connected || oauthError) setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function connectWithMeta() {
+    window.location.href = `/api/oauth?provider=meta&action=start&workspace=${encodeURIComponent(key)}`;
+  }
 
   async function setStatus(id: number, status: string, label: string) {
     setPendingId(id);
@@ -66,12 +90,12 @@ export function ConnectionsScreen() {
             {c.account && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>{c.account}</div>}
             <div>
               {c.status === 'not-connected' && (
-                <Button size="sm" variant="secondary" disabled={pendingId === c.id} onClick={() => setStatus(c.id, 'connected', c.label)}>
+                <Button size="sm" variant="secondary" disabled={pendingId === c.id} onClick={() => (META_OAUTH_LABELS.has(c.label) ? connectWithMeta() : setStatus(c.id, 'connected', c.label))}>
                   {pendingId === c.id ? 'Connecting…' : 'Connect'}
                 </Button>
               )}
               {c.status === 'pending' && (
-                <Button size="sm" variant="primary" disabled={pendingId === c.id} onClick={() => setStatus(c.id, 'connected', c.label)}>
+                <Button size="sm" variant="primary" disabled={pendingId === c.id} onClick={() => (META_OAUTH_LABELS.has(c.label) ? connectWithMeta() : setStatus(c.id, 'connected', c.label))}>
                   {pendingId === c.id ? 'Reconnecting…' : 'Reconnect'}
                 </Button>
               )}

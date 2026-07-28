@@ -102,7 +102,11 @@ CREATE TABLE IF NOT EXISTS connections (
   label TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'not-connected',
   account TEXT,
-  sort_order INT NOT NULL DEFAULT 0
+  sort_order INT NOT NULL DEFAULT 0,
+  -- Populated once a real OAuth connection (e.g. Meta) is completed.
+  access_token TEXT,
+  platform_account_id TEXT,
+  token_expires_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
