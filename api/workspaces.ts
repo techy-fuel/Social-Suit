@@ -13,6 +13,28 @@ function initialsOf(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
+// Every workspace should show the full platform catalog on Connections, not
+// just whatever's already been connected — otherwise a brand-new workspace
+// (zero rows) renders as a blank page with no way to discover what's
+// available to connect.
+const DEFAULT_PLATFORMS: Array<{ platform: string; label: string }> = [
+  { platform: 'facebook', label: 'Facebook' },
+  { platform: 'instagram', label: 'Instagram' },
+  { platform: 'threads', label: 'Threads' },
+  { platform: 'x', label: 'X' },
+  { platform: 'bluesky', label: 'Bluesky' },
+  { platform: 'linkedin', label: 'LinkedIn' },
+  { platform: 'pinterest', label: 'Pinterest' },
+  { platform: 'tiktok', label: 'TikTok (personal)' },
+  { platform: 'tiktok', label: 'TikTok (business)' },
+  { platform: 'google', label: 'Google Business Profile' },
+  { platform: 'youtube', label: 'YouTube' },
+  { platform: 'twitch', label: 'Twitch' },
+  { platform: 'facebook', label: 'Meta Ads' },
+  { platform: 'google', label: 'Google Ads' },
+  { platform: 'tiktok', label: 'TikTok Ads' },
+];
+
 async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
   if (req.method === 'DELETE') {
     const key = String(req.query.key || '');
@@ -38,8 +60,14 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
     const rows = await sql`
       INSERT INTO workspaces (account_id, key, initials, name, sort_order)
       VALUES (${session.accountId}, ${key}, ${initialsOf(trimmed)}, ${trimmed}, ${maxOrder[0].next})
-      RETURNING key, initials, name`;
-    return res.status(201).json(rows[0]);
+      RETURNING id, key, initials, name`;
+    const workspaceId = rows[0].id;
+
+    for (const [idx, p] of DEFAULT_PLATFORMS.entries()) {
+      await sql`INSERT INTO connections (workspace_id, platform, label, status, account, sort_order) VALUES (${workspaceId}, ${p.platform}, ${p.label}, 'not-connected', NULL, ${idx})`;
+    }
+
+    return res.status(201).json({ key: rows[0].key, initials: rows[0].initials, name: rows[0].name });
   }
 
   const rows = await sql`SELECT key, initials, name FROM workspaces WHERE account_id = ${session.accountId} ORDER BY sort_order`;
