@@ -34,11 +34,11 @@ export const api = {
   }>(`analytics?workspace=${encodeURIComponent(workspace)}`),
 
   calendar: (workspace: string) => request<{
-    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string; mediaUrl: string | null; mediaType: 'image' | 'video' | null; publishStatus: string; publishError: string | null }[];
+    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string; mediaUrl: string | null; mediaType: 'image' | 'video' | null; scheduledDate: string | null; publishStatus: string; publishError: string | null }[];
     heatmap: { day: number; hour: number; value: number }[];
   }>(`calendar?workspace=${encodeURIComponent(workspace)}`),
 
-  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null; mediaType?: string | null; mediaStorage?: string | null }) =>
+  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null; mediaType?: string | null; mediaStorage?: string | null; scheduledDate?: string }) =>
     request<{ id: number }>(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
 
   deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),

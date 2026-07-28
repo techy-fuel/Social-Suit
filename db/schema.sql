@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
   day INT NOT NULL,
   hour INT NOT NULL,
   time_label TEXT NOT NULL,
+  scheduled_date DATE,
   platform TEXT NOT NULL,
   caption TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'scheduled',

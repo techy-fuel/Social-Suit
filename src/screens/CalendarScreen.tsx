@@ -12,6 +12,11 @@ import { api } from '../api';
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
+function formatScheduledDate(iso: string | null, dayIndex: number): string {
+  if (!iso) return days[dayIndex]; // older posts created before real dates existed
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function CalendarScreen() {
   const { current } = useWorkspaces();
   const key = current!.key;
@@ -108,7 +113,7 @@ export function CalendarScreen() {
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 16px' }}>
                   <PlatformIcon platform={p.platform} />
                   <div style={{ width: 92, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    {days[p.day]} · {p.time}
+                    {formatScheduledDate(p.scheduledDate, p.day)} · {p.time}
                   </div>
                   <div style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.caption}

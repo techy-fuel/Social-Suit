@@ -5,6 +5,7 @@ import { IconButton } from '../components/core/IconButton';
 import { Radio } from '../components/forms/Radio';
 import { Textarea } from '../components/forms/Textarea';
 import { Select } from '../components/forms/Select';
+import { Input } from '../components/forms/Input';
 import { Switch } from '../components/forms/Switch';
 import { PlatformIcon, Platform } from '../components/data/PlatformIcon';
 import { Tag } from '../components/core/Tag';
@@ -13,8 +14,23 @@ import { useToast } from '../ToastContext';
 import { api } from '../api';
 
 const platforms: Platform[] = ['facebook', 'instagram', 'tiktok'];
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const hourOptions = Array.from({ length: 12 }, (_, i) => i + 8);
+
+function tomorrowIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// Our day-of-week scheme is 0=Mon..6=Sun; Date#getDay() is 0=Sun..6=Sat, so
+// shift it.
+function isoDateToDayIndex(iso: string): number {
+  return (new Date(`${iso}T00:00:00`).getDay() + 6) % 7;
+}
+
+function formatDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -35,7 +51,7 @@ export function ComposerScreen() {
   const [caption, setCaption] = React.useState(
     "Registration for the Winter Hifz Intensive closes this weekend. Reserve your child's seat before spots fill up — link in bio for details and payment plans."
   );
-  const [day, setDay] = React.useState('1');
+  const [date, setDate] = React.useState(tomorrowIso());
   const [hour, setHour] = React.useState('9');
   const [submitting, setSubmitting] = React.useState(false);
   const [savingDraft, setSavingDraft] = React.useState(false);
@@ -107,11 +123,11 @@ export function ComposerScreen() {
     try {
       const h = Number(hour);
       const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
-      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage });
+      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
-        description: `${days[Number(day)]} · ${time} — check Planning calendar.`,
+        description: `${formatDate(date)} · ${time} — check Planning calendar.`,
       });
 
       if (status === 'scheduled' && autoPublish && mediaUrl) {
@@ -211,7 +227,7 @@ export function ComposerScreen() {
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18, display: 'flex', gap: 14 }}>
           <div style={{ flex: 1 }}>
-            <Select label="Day" value={day} onChange={(e) => setDay(e.target.value)} options={days.map((d, i) => ({ value: String(i), label: d }))} />
+            <Input label="Date" type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div style={{ flex: 1 }}>
             <Select label="Time" value={hour} onChange={(e) => setHour(e.target.value)} options={hourOptions.map((h) => ({ value: String(h), label: `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}` }))} />

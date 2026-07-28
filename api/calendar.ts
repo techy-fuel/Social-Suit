@@ -153,20 +153,20 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
   const workspaceId = await getWorkspaceId(workspace, session.accountId);
 
   if (req.method === 'POST') {
-    const { day, hour, time, platform, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage } = req.body || {};
+    const { day, hour, time, platform, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate } = req.body || {};
     if (day == null || hour == null || !time || !platform || !caption) {
       return badRequest(res, 'day, hour, time, platform, caption are required');
     }
     const postStatus = status === 'draft' ? 'draft' : 'scheduled';
     const rows = await sql`
-      INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, caption, status, media_url, media_path, media_type, media_storage)
-      VALUES (${workspaceId}, ${day}, ${hour}, ${time}, ${platform}, ${caption}, ${postStatus}, ${mediaUrl || null}, ${mediaPath || null}, ${mediaType || null}, ${mediaStorage || null})
-      RETURNING id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", publish_status AS "publishStatus"`;
+      INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, caption, status, media_url, media_path, media_type, media_storage, scheduled_date)
+      VALUES (${workspaceId}, ${day}, ${hour}, ${time}, ${platform}, ${caption}, ${postStatus}, ${mediaUrl || null}, ${mediaPath || null}, ${mediaType || null}, ${mediaStorage || null}, ${scheduledDate || null})
+      RETURNING id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", scheduled_date AS "scheduledDate", publish_status AS "publishStatus"`;
     return res.status(201).json(rows[0]);
   }
 
   const [posts, heat] = await Promise.all([
-    sql`SELECT id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", media_type AS "mediaType", publish_status AS "publishStatus", publish_error AS "publishError" FROM scheduled_posts WHERE workspace_id = ${workspaceId} ORDER BY day, hour`,
+    sql`SELECT id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", media_type AS "mediaType", scheduled_date AS "scheduledDate", publish_status AS "publishStatus", publish_error AS "publishError" FROM scheduled_posts WHERE workspace_id = ${workspaceId} ORDER BY COALESCE(scheduled_date, CURRENT_DATE), day, hour`,
     sql`SELECT day, hour, value FROM heatmap_cells WHERE workspace_id = ${workspaceId}`,
   ]);
 
