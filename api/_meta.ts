@@ -12,10 +12,13 @@ function appSecret(): string {
   return s;
 }
 
+// pages_manage_posts is deliberately left out: it's only needed to actually
+// publish to a Page, which isn't built yet (scheduled posts are stored in
+// our own DB only). Request it when real publishing is implemented, so
+// connecting an account doesn't get blocked on a permission we don't use.
 export const META_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
-  'pages_manage_posts',
   'instagram_basic',
   'instagram_content_publish',
   'business_management',
