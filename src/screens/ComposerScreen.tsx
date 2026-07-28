@@ -40,6 +40,7 @@ export function ComposerScreen() {
   const [submitting, setSubmitting] = React.useState(false);
   const [savingDraft, setSavingDraft] = React.useState(false);
   const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
+  const [mediaPath, setMediaPath] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -61,8 +62,9 @@ export function ComposerScreen() {
     setUploading(true);
     try {
       const dataBase64 = await readFileAsBase64(file);
-      const { url } = await api.uploadMedia(current.key, { filename: file.name, contentType: file.type, dataBase64 });
+      const { url, path } = await api.uploadMedia(current.key, { filename: file.name, contentType: file.type, dataBase64 });
       setMediaUrl(url);
+      setMediaPath(path);
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't upload image", description: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -77,7 +79,7 @@ export function ComposerScreen() {
     try {
       const h = Number(hour);
       const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
-      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl });
+      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
@@ -151,7 +153,11 @@ export function ComposerScreen() {
             <div style={{ position: 'relative', width: 140 }}>
               <img src={mediaUrl} alt="" style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
               <button
-                onClick={() => setMediaUrl(null)}
+                onClick={() => {
+                  if (mediaPath) api.discardMedia(mediaPath).catch(() => {});
+                  setMediaUrl(null);
+                  setMediaPath(null);
+                }}
                 style={{ position: 'absolute', top: -8, right: -8, width: 22, height: 22, borderRadius: '50%', background: 'var(--slate-900)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
                 aria-label="Remove image"
               >

@@ -38,13 +38,16 @@ export const api = {
     heatmap: { day: number; hour: number; value: number }[];
   }>(`calendar?workspace=${encodeURIComponent(workspace)}`),
 
-  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null }) =>
+  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null }) =>
     request<{ id: number }>(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
 
   deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),
 
   uploadMedia: (workspace: string, file: { filename: string; contentType: string; dataBase64: string }) =>
-    request<{ url: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
+    request<{ url: string; path: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
+
+  discardMedia: (path: string) =>
+    request(`calendar?action=discard-media`, { method: 'POST', body: JSON.stringify({ path }) }),
 
   publishScheduledPost: (id: number) =>
     request<{ ok: true; platformPostId: string }>(`calendar?action=publish`, { method: 'POST', body: JSON.stringify({ id }) }),

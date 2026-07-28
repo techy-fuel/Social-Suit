@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
   status TEXT NOT NULL DEFAULT 'scheduled',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   media_url TEXT,
+  media_path TEXT,
   publish_status TEXT NOT NULL DEFAULT 'unpublished',
   platform_post_id TEXT,
   publish_error TEXT
