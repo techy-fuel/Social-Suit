@@ -82,9 +82,27 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
+## Real platform integration (Meta)
+
+Facebook Pages and Instagram Business accounts connect via a real Meta Graph
+API OAuth flow (`api/oauth.ts`, `api/_meta.ts`) — no other platform is wired
+up yet. Connecting stores a long-lived Page access token on that workspace's
+`connections` row. Post composer supports attaching one image (uploaded to
+Supabase Storage, bucket `post-media` — must be created manually and set
+public, see `db/migrate-add-media-publish-columns.sql`) and either publishing
+it immediately (`Auto-publish` toggle, or the "Publish now" action on
+Planning calendar) or leaving it scheduled for manual publish later. There is
+**no cron/queue publishing posts at their scheduled day/time** — the day/hour
+fields are organizational only; add a real `scheduled_at` timestamp plus a
+Vercel Cron job (Hobby plan only runs cron once/day, so exact-time publishing
+needs a Pro plan or an external pinger) if that's needed. `pages_manage_posts`
+isn't requested by the OAuth scope by default (Meta gates it behind a
+separate "Facebook Pages" use case in the app dashboard) — add it there
+before testing Facebook Page publishing.
+
 ## Known gaps
 
-- No real social platform integration (Meta/TikTok/Google APIs) — this manages its own data, it doesn't publish anywhere.
+- TikTok, YouTube, and other platforms still just flip a status flag on Connections — no real integration.
 - One user per account — no team invites/multiple users per tenant yet.
 - No billing/subscription system — every account has unlimited access.
 - No pagination — list endpoints (conversations, scheduled posts, etc.) return everything for a workspace in one call.

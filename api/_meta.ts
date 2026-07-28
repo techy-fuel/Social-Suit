@@ -45,6 +45,19 @@ async function graphGet(path: string, params: Record<string, string>): Promise<a
   return body;
 }
 
+async function graphPost(path: string, params: Record<string, string>): Promise<any> {
+  const res = await fetch(`${GRAPH_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(params).toString(),
+  });
+  const body = await res.json();
+  if (!res.ok || body.error) {
+    throw new Error(`Meta API error: ${body.error?.message || res.statusText}`);
+  }
+  return body;
+}
+
 export async function exchangeCodeForUserToken(code: string, redirectUri: string): Promise<string> {
   const short = await graphGet('/oauth/access_token', {
     client_id: META_APP_ID,
@@ -87,4 +100,20 @@ export async function fetchPagesWithInstagram(userAccessToken: string): Promise<
     results.push({ id: page.id, name: page.name, access_token: page.access_token, instagram });
   }
   return results;
+}
+
+// Requires the pages_manage_posts permission — not requested by default (see
+// META_SCOPES above), so this throws a clear Meta API permission error until
+// that's added to the connected account's grant.
+export async function publishPhotoToPage(pageId: string, pageAccessToken: string, imageUrl: string, caption: string): Promise<string> {
+  const result = await graphPost(`/${pageId}/photos`, { url: imageUrl, caption, access_token: pageAccessToken });
+  return result.post_id || result.id;
+}
+
+// Instagram publishing is a two-step process: create a media container from
+// the image, then publish that container.
+export async function publishPhotoToInstagram(igUserId: string, pageAccessToken: string, imageUrl: string, caption: string): Promise<string> {
+  const container = await graphPost(`/${igUserId}/media`, { image_url: imageUrl, caption, access_token: pageAccessToken });
+  const published = await graphPost(`/${igUserId}/media_publish`, { creation_id: container.id, access_token: pageAccessToken });
+  return published.id;
 }

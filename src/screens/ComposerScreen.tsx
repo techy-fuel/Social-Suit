@@ -1,5 +1,5 @@
 import React from 'react';
-import { Smartphone, Monitor, Image as ImageIcon } from 'lucide-react';
+import { Smartphone, Monitor, Image as ImageIcon, X } from 'lucide-react';
 import { Button } from '../components/core/Button';
 import { IconButton } from '../components/core/IconButton';
 import { Radio } from '../components/forms/Radio';
@@ -16,6 +16,15 @@ const platforms: Platform[] = ['facebook', 'instagram', 'tiktok'];
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const hourOptions = Array.from({ length: 12 }, (_, i) => i + 8);
 
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ComposerScreen() {
   const { current } = useWorkspaces();
   const { showToast } = useToast();
@@ -29,6 +38,10 @@ export function ComposerScreen() {
   const [day, setDay] = React.useState('1');
   const [hour, setHour] = React.useState('9');
   const [submitting, setSubmitting] = React.useState(false);
+  const [savingDraft, setSavingDraft] = React.useState(false);
+  const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const limit = 2200;
   const over = caption.length > limit;
@@ -37,7 +50,25 @@ export function ComposerScreen() {
     setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
   }
 
-  const [savingDraft, setSavingDraft] = React.useState(false);
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !current) return;
+    if (file.size > 8 * 1024 * 1024) {
+      showToast({ tone: 'error', title: 'Image too large', description: 'Max 8MB.' });
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataBase64 = await readFileAsBase64(file);
+      const { url } = await api.uploadMedia(current.key, { filename: file.name, contentType: file.type, dataBase64 });
+      setMediaUrl(url);
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't upload image", description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submitPost(status: 'scheduled' | 'draft') {
     if (!current || over || !caption.trim() || selected.length === 0) return;
@@ -46,12 +77,21 @@ export function ComposerScreen() {
     try {
       const h = Number(hour);
       const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
-      await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status });
+      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
         description: `${days[Number(day)]} · ${time} — check Planning calendar.`,
       });
+
+      if (status === 'scheduled' && autoPublish && mediaUrl) {
+        try {
+          await api.publishScheduledPost(created.id);
+          showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
+        } catch (err) {
+          showToast({ tone: 'error', title: "Couldn't auto-publish", description: err instanceof Error ? err.message : String(err) });
+        }
+      }
     } catch (err) {
       showToast({ tone: 'error', title: `Couldn't ${status === 'draft' ? 'save draft' : 'schedule post'}`, description: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -104,6 +144,27 @@ export function ComposerScreen() {
           </div>
         </div>
 
+        <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Media</div>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+          {mediaUrl ? (
+            <div style={{ position: 'relative', width: 140 }}>
+              <img src={mediaUrl} alt="" style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
+              <button
+                onClick={() => setMediaUrl(null)}
+                style={{ position: 'absolute', top: -8, right: -8, width: 22, height: 22, borderRadius: '50%', background: 'var(--slate-900)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                aria-label="Remove image"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ) : (
+            <Button variant="secondary" size="sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+              {uploading ? 'Uploading…' : 'Upload image'}
+            </Button>
+          )}
+        </div>
+
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18, display: 'flex', gap: 14 }}>
           <div style={{ flex: 1 }}>
             <Select label="Day" value={day} onChange={(e) => setDay(e.target.value)} options={days.map((d, i) => ({ value: String(i), label: d }))} />
@@ -133,7 +194,11 @@ export function ComposerScreen() {
           <div>
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Auto-publish</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-              {autoPublish ? 'This post goes live at the scheduled time.' : 'You will be notified to publish this manually.'}
+              {autoPublish
+                ? mediaUrl
+                  ? 'Publishes to the connected account immediately after scheduling.'
+                  : 'Add an image above — publishing requires media right now.'
+                : "You'll publish this manually later from Planning calendar."}
             </div>
           </div>
           <Switch checked={autoPublish} onChange={setAutoPublish} />
@@ -158,8 +223,8 @@ export function ComposerScreen() {
               <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--blue-100)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 11 }}>{current?.initials}</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)' }}>{current?.name.toLowerCase().replace(/\s+/g, '.')}</div>
             </div>
-            <div style={{ height: preview === 'mobile' ? 220 : 260, background: 'var(--blue-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)' }}>
-              <ImageIcon size={32} />
+            <div style={{ height: preview === 'mobile' ? 220 : 260, background: 'var(--blue-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)', overflow: 'hidden' }}>
+              {mediaUrl ? <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={32} />}
             </div>
             <div style={{ padding: 10, fontSize: 11, color: 'var(--text)', lineHeight: 1.5 }}>
               {caption.slice(0, 120)}…

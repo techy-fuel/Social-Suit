@@ -1,8 +1,9 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Send } from 'lucide-react';
 import { IconButton } from '../components/core/IconButton';
 import { PlatformIcon } from '../components/data/PlatformIcon';
 import { Badge } from '../components/core/Badge';
+import { Button } from '../components/core/Button';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
@@ -16,6 +17,7 @@ export function CalendarScreen() {
   const key = current!.key;
   const { data, loading, error, refetch } = useApi(() => api.calendar(key), [key]);
   const { showToast } = useToast();
+  const [publishingId, setPublishingId] = React.useState<number | null>(null);
 
   const heatByCell = new Map<string, number>();
   data?.heatmap.forEach((h) => heatByCell.set(`${h.day}-${h.hour}`, h.value));
@@ -26,6 +28,19 @@ export function CalendarScreen() {
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't delete post", description: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  async function handlePublish(id: number, platform: string) {
+    setPublishingId(id);
+    try {
+      await api.publishScheduledPost(id);
+      showToast({ tone: 'positive', title: 'Published', description: `Live on ${platform}.` });
+      refetch();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't publish", description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPublishingId(null);
     }
   }
 
@@ -95,6 +110,21 @@ export function CalendarScreen() {
                     {p.caption}
                   </div>
                   <Badge tone={p.status === 'draft' ? 'neutral' : 'brand'}>{p.status === 'draft' ? 'Draft' : 'Scheduled'}</Badge>
+                  {p.publishStatus === 'published' && <Badge tone="positive">Published</Badge>}
+                  {p.publishStatus === 'failed' && <Badge tone="error">Publish failed</Badge>}
+                  {p.status === 'scheduled' && p.publishStatus !== 'published' && (
+                    <span title={!p.mediaUrl ? 'Add an image to this post before publishing' : undefined}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={publishingId === p.id || !p.mediaUrl}
+                        onClick={() => handlePublish(p.id, p.platform)}
+                      >
+                        <Send size={13} style={{ marginRight: 4 }} />
+                        {publishingId === p.id ? 'Publishing…' : 'Publish now'}
+                      </Button>
+                    </span>
+                  )}
                   <IconButton
                     size="sm"
                     icon={<Trash2 size={14} />}

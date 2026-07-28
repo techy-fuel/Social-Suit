@@ -34,14 +34,20 @@ export const api = {
   }>(`analytics?workspace=${encodeURIComponent(workspace)}`),
 
   calendar: (workspace: string) => request<{
-    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string }[];
+    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string; mediaUrl: string | null; publishStatus: string; publishError: string | null }[];
     heatmap: { day: number; hour: number; value: number }[];
   }>(`calendar?workspace=${encodeURIComponent(workspace)}`),
 
-  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft' }) =>
-    request(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
+  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null }) =>
+    request<{ id: number }>(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
 
   deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),
+
+  uploadMedia: (workspace: string, file: { filename: string; contentType: string; dataBase64: string }) =>
+    request<{ url: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
+
+  publishScheduledPost: (id: number) =>
+    request<{ ok: true; platformPostId: string }>(`calendar?action=publish`, { method: 'POST', body: JSON.stringify({ id }) }),
 
   connections: (workspace: string) => request<{ id: number; platform: Platform; label: string; status: string; account: string | null }[]>(
     `connections?workspace=${encodeURIComponent(workspace)}`
