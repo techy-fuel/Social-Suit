@@ -34,23 +34,26 @@ export const api = {
   }>(`analytics?workspace=${encodeURIComponent(workspace)}`),
 
   calendar: (workspace: string) => request<{
-    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string; mediaUrl: string | null; publishStatus: string; publishError: string | null }[];
+    scheduledPosts: { id: number; day: number; hour: number; time: string; platform: Platform; caption: string; status: string; mediaUrl: string | null; mediaType: 'image' | 'video' | null; publishStatus: string; publishError: string | null }[];
     heatmap: { day: number; hour: number; value: number }[];
   }>(`calendar?workspace=${encodeURIComponent(workspace)}`),
 
-  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null }) =>
+  scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null; mediaType?: string | null; mediaStorage?: string | null }) =>
     request<{ id: number }>(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
 
   deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),
 
   uploadMedia: (workspace: string, file: { filename: string; contentType: string; dataBase64: string }) =>
-    request<{ url: string; path: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
+    request<{ url: string; path: string; storage: string; mediaType: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
 
-  discardMedia: (path: string) =>
-    request(`calendar?action=discard-media`, { method: 'POST', body: JSON.stringify({ path }) }),
+  getVideoUploadUrl: (workspace: string, file: { filename: string; contentType: string }) =>
+    request<{ uploadUrl: string; publicUrl: string; path: string; storage: string; mediaType: string }>(`calendar?action=video-upload-url`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),
+
+  discardMedia: (path: string, storage?: string) =>
+    request(`calendar?action=discard-media`, { method: 'POST', body: JSON.stringify({ path, storage }) }),
 
   publishScheduledPost: (id: number) =>
-    request<{ ok: true; platformPostId: string }>(`calendar?action=publish`, { method: 'POST', body: JSON.stringify({ id }) }),
+    request<{ ok: true; platformPostId?: string; processing?: boolean }>(`calendar?action=publish`, { method: 'POST', body: JSON.stringify({ id }) }),
 
   connections: (workspace: string) => request<{ id: number; platform: Platform; label: string; status: string; account: string | null }[]>(
     `connections?workspace=${encodeURIComponent(workspace)}`

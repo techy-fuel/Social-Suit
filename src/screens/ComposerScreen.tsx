@@ -41,6 +41,8 @@ export function ComposerScreen() {
   const [savingDraft, setSavingDraft] = React.useState(false);
   const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
   const [mediaPath, setMediaPath] = React.useState<string | null>(null);
+  const [mediaType, setMediaType] = React.useState<'image' | 'video' | null>(null);
+  const [mediaStorage, setMediaStorage] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -55,6 +57,30 @@ export function ComposerScreen() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !current) return;
+    const isVideo = file.type.startsWith('video/');
+
+    if (isVideo) {
+      if (file.size > 200 * 1024 * 1024) {
+        showToast({ tone: 'error', title: 'Video too large', description: 'Max 200MB.' });
+        return;
+      }
+      setUploading(true);
+      try {
+        const { uploadUrl, publicUrl, path } = await api.getVideoUploadUrl(current.key, { filename: file.name, contentType: file.type });
+        const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+        if (!put.ok) throw new Error(`Upload to storage failed (${put.status}).`);
+        setMediaUrl(publicUrl);
+        setMediaPath(path);
+        setMediaType('video');
+        setMediaStorage('r2');
+      } catch (err) {
+        showToast({ tone: 'error', title: "Couldn't upload video", description: err instanceof Error ? err.message : String(err) });
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+
     if (file.size > 8 * 1024 * 1024) {
       showToast({ tone: 'error', title: 'Image too large', description: 'Max 8MB.' });
       return;
@@ -65,6 +91,8 @@ export function ComposerScreen() {
       const { url, path } = await api.uploadMedia(current.key, { filename: file.name, contentType: file.type, dataBase64 });
       setMediaUrl(url);
       setMediaPath(path);
+      setMediaType('image');
+      setMediaStorage('supabase');
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't upload image", description: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -79,7 +107,7 @@ export function ComposerScreen() {
     try {
       const h = Number(hour);
       const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
-      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath });
+      const created = await api.scheduleCalendarPost(current.key, { day: Number(day), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
@@ -88,8 +116,12 @@ export function ComposerScreen() {
 
       if (status === 'scheduled' && autoPublish && mediaUrl) {
         try {
-          await api.publishScheduledPost(created.id);
-          showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
+          const result = await api.publishScheduledPost(created.id);
+          if (result.processing) {
+            showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — check Planning calendar shortly and hit Publish now again.' });
+          } else {
+            showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
+          }
         } catch (err) {
           showToast({ tone: 'error', title: "Couldn't auto-publish", description: err instanceof Error ? err.message : String(err) });
         }
@@ -148,25 +180,31 @@ export function ComposerScreen() {
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>
           <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Media</div>
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+          <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileSelect} style={{ display: 'none' }} />
           {mediaUrl ? (
             <div style={{ position: 'relative', width: 140 }}>
-              <img src={mediaUrl} alt="" style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
+              {mediaType === 'video' ? (
+                <video src={mediaUrl} controls style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
+              ) : (
+                <img src={mediaUrl} alt="" style={{ width: 140, height: 140, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }} />
+              )}
               <button
                 onClick={() => {
-                  if (mediaPath) api.discardMedia(mediaPath).catch(() => {});
+                  if (mediaPath) api.discardMedia(mediaPath, mediaStorage || undefined).catch(() => {});
                   setMediaUrl(null);
                   setMediaPath(null);
+                  setMediaType(null);
+                  setMediaStorage(null);
                 }}
                 style={{ position: 'absolute', top: -8, right: -8, width: 22, height: 22, borderRadius: '50%', background: 'var(--slate-900)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                aria-label="Remove image"
+                aria-label="Remove media"
               >
                 <X size={13} />
               </button>
             </div>
           ) : (
             <Button variant="secondary" size="sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-              {uploading ? 'Uploading…' : 'Upload image'}
+              {uploading ? 'Uploading…' : 'Upload image or video'}
             </Button>
           )}
         </div>
@@ -203,7 +241,7 @@ export function ComposerScreen() {
               {autoPublish
                 ? mediaUrl
                   ? 'Publishes to the connected account immediately after scheduling.'
-                  : 'Add an image above — publishing requires media right now.'
+                  : 'Add an image or video above — publishing requires media right now.'
                 : "You'll publish this manually later from Planning calendar."}
             </div>
           </div>
@@ -230,7 +268,11 @@ export function ComposerScreen() {
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)' }}>{current?.name.toLowerCase().replace(/\s+/g, '.')}</div>
             </div>
             <div style={{ height: preview === 'mobile' ? 220 : 260, background: 'var(--blue-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)', overflow: 'hidden' }}>
-              {mediaUrl ? <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ImageIcon size={32} />}
+              {mediaUrl ? (
+                mediaType === 'video'
+                  ? <video src={mediaUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : <ImageIcon size={32} />}
             </div>
             <div style={{ padding: 10, fontSize: 11, color: 'var(--text)', lineHeight: 1.5 }}>
               {caption.slice(0, 120)}…

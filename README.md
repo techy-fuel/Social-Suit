@@ -87,18 +87,34 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 Facebook Pages and Instagram Business accounts connect via a real Meta Graph
 API OAuth flow (`api/oauth.ts`, `api/_meta.ts`) — no other platform is wired
 up yet. Connecting stores a long-lived Page access token on that workspace's
-`connections` row. Post composer supports attaching one image (uploaded to
-Supabase Storage, bucket `post-media` — must be created manually and set
-public, see `db/migrate-add-media-publish-columns.sql`) and either publishing
-it immediately (`Auto-publish` toggle, or the "Publish now" action on
-Planning calendar) or leaving it scheduled for manual publish later. There is
-**no cron/queue publishing posts at their scheduled day/time** — the day/hour
-fields are organizational only; add a real `scheduled_at` timestamp plus a
-Vercel Cron job (Hobby plan only runs cron once/day, so exact-time publishing
-needs a Pro plan or an external pinger) if that's needed. `pages_manage_posts`
-isn't requested by the OAuth scope by default (Meta gates it behind a
-separate "Facebook Pages" use case in the app dashboard) — add it there
-before testing Facebook Page publishing.
+`connections` row. Post composer supports attaching one image or one video
+and either publishing it immediately (`Auto-publish` toggle, or the "Publish
+now" action on Planning calendar) or leaving it scheduled for manual publish
+later. There is **no cron/queue publishing posts at their scheduled
+day/time** — the day/hour fields are organizational only; add a real
+`scheduled_at` timestamp plus a Vercel Cron job (Hobby plan only runs cron
+once/day, so exact-time publishing needs a Pro plan or an external pinger)
+if that's needed. `pages_manage_posts` isn't requested by the OAuth scope by
+default (Meta gates it behind a separate "Facebook Pages" use case in the
+app dashboard) — add it there before testing Facebook Page publishing.
+
+**Media storage is split across two backends** (`api/calendar.ts`):
+images (≤8MB) go through our own function to a Supabase Storage bucket
+`post-media` (must be created manually, set **public**); videos (≤200MB) skip
+our backend entirely — the browser gets a presigned URL (`api/_r2.ts`) and
+uploads straight to a Cloudflare R2 bucket, avoiding Vercel's function body
+size limit. Env vars needed for R2: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` (the bucket's public
+`r2.dev` URL or a custom domain — must also have public access enabled on the
+bucket itself). Files are deleted from whichever backend hosted them as soon
+as they're no longer needed (published, post deleted, or removed from the
+composer before scheduling) — see `deleteMedia()` in `api/calendar.ts` — so
+storage usage tracks what's in flight rather than growing forever. Instagram
+video publishing is two-step (create a container, then publish it) and
+Instagram's own processing can outlast a single request's time budget; if so
+the post is left in a `processing` state with the container id saved, and
+the next "Publish now" click resumes and finishes it rather than
+re-uploading.
 
 ## Known gaps
 

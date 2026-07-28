@@ -117,3 +117,40 @@ export async function publishPhotoToInstagram(igUserId: string, pageAccessToken:
   const published = await graphPost(`/${igUserId}/media_publish`, { creation_id: container.id, access_token: pageAccessToken });
   return published.id;
 }
+
+// Facebook processes Page video asynchronously after this call returns, but
+// the API response itself comes back quickly — no polling needed here
+// (unlike Instagram below).
+export async function publishVideoToPage(pageId: string, pageAccessToken: string, videoUrl: string, caption: string): Promise<string> {
+  const result = await graphPost(`/${pageId}/videos`, { file_url: videoUrl, description: caption, access_token: pageAccessToken });
+  return result.id;
+}
+
+export type PublishResult = { status: 'published'; platformPostId: string } | { status: 'processing'; containerId: string };
+
+async function pollInstagramContainer(containerId: string, pageAccessToken: string, attempts: number, delayMs: number): Promise<string | null> {
+  for (let i = 0; i < attempts; i++) {
+    const { status_code } = await graphGet(`/${containerId}`, { fields: 'status_code', access_token: pageAccessToken });
+    if (status_code === 'FINISHED') return 'FINISHED';
+    if (status_code === 'ERROR') throw new Error('Instagram failed to process this video.');
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return null;
+}
+
+// Instagram requires the video to finish processing (server-side, can take
+// well beyond a single request's time budget) before it can be published,
+// unlike photos. Polls for a bounded window; if it's not ready yet, returns
+// the container id so the caller can retry finishInstagramVideo() later
+// instead of re-uploading.
+export async function publishVideoToInstagram(igUserId: string, pageAccessToken: string, videoUrl: string, caption: string): Promise<PublishResult> {
+  const container = await graphPost(`/${igUserId}/media`, { video_url: videoUrl, caption, media_type: 'REELS', access_token: pageAccessToken });
+  return finishInstagramVideo(container.id, igUserId, pageAccessToken);
+}
+
+export async function finishInstagramVideo(containerId: string, igUserId: string, pageAccessToken: string): Promise<PublishResult> {
+  const ready = await pollInstagramContainer(containerId, pageAccessToken, 5, 1500);
+  if (!ready) return { status: 'processing', containerId };
+  const published = await graphPost(`/${igUserId}/media_publish`, { creation_id: containerId, access_token: pageAccessToken });
+  return { status: 'published', platformPostId: published.id };
+}

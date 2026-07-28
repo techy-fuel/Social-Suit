@@ -34,8 +34,12 @@ export function CalendarScreen() {
   async function handlePublish(id: number, platform: string) {
     setPublishingId(id);
     try {
-      await api.publishScheduledPost(id);
-      showToast({ tone: 'positive', title: 'Published', description: `Live on ${platform}.` });
+      const result = await api.publishScheduledPost(id);
+      if (result.processing) {
+        showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — try Publish now again shortly.' });
+      } else {
+        showToast({ tone: 'positive', title: 'Published', description: `Live on ${platform}.` });
+      }
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't publish", description: err instanceof Error ? err.message : String(err) });
@@ -112,8 +116,9 @@ export function CalendarScreen() {
                   <Badge tone={p.status === 'draft' ? 'neutral' : 'brand'}>{p.status === 'draft' ? 'Draft' : 'Scheduled'}</Badge>
                   {p.publishStatus === 'published' && <Badge tone="positive">Published</Badge>}
                   {p.publishStatus === 'failed' && <Badge tone="error">Publish failed</Badge>}
+                  {p.publishStatus === 'processing' && <Badge tone="warning">Processing</Badge>}
                   {p.status === 'scheduled' && p.publishStatus !== 'published' && (
-                    <span title={!p.mediaUrl ? 'Add an image to this post before publishing' : undefined}>
+                    <span title={!p.mediaUrl ? 'Add an image or video to this post before publishing' : undefined}>
                       <Button
                         size="sm"
                         variant="ghost"
