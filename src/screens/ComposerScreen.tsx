@@ -233,14 +233,14 @@ export function ComposerScreen() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>New post</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" size="sm" disabled={over || savingDraft || selected.length === 0} onClick={() => submitPost('draft')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || savingDraft || selected.length === 0} onClick={() => submitPost('draft')}>
               {savingDraft ? 'Saving…' : 'Save as draft'}
             </Button>
-            <Button variant="secondary" size="sm" disabled={over || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
               {submitting ? 'Scheduling…' : 'Schedule'}
             </Button>
-            <span title={!mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
-              <Button size="sm" disabled={over || publishingNow || selected.length === 0 || !mediaUrl} onClick={publishNow}>
+            <span title={!caption.trim() ? 'Write a caption above first.' : !mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
+              <Button size="sm" disabled={over || !caption.trim() || publishingNow || selected.length === 0 || !mediaUrl} onClick={publishNow}>
                 {publishingNow ? 'Publishing…' : 'Publish now'}
               </Button>
             </span>
