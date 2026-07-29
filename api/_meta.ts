@@ -39,12 +39,22 @@ export function metaAuthorizeUrl(redirectUri: string, state: string): string {
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
 
+function describeGraphError(body: any, fallback: string): string {
+  const e = body?.error;
+  if (!e) return `Meta API error: ${fallback}`;
+  const parts = [e.message || fallback];
+  if (e.error_subcode) parts.push(`subcode ${e.error_subcode}`);
+  if (e.type) parts.push(e.type);
+  if (e.fbtrace_id) parts.push(`trace ${e.fbtrace_id}`);
+  return `Meta API error: ${parts.join(' — ')}`;
+}
+
 async function graphGet(path: string, params: Record<string, string>): Promise<any> {
   const url = `${GRAPH_BASE}${path}?${new URLSearchParams(params).toString()}`;
   const res = await fetch(url);
   const body = await res.json();
   if (!res.ok || body.error) {
-    throw new Error(`Meta API error: ${body.error?.message || res.statusText}`);
+    throw new Error(describeGraphError(body, res.statusText));
   }
   return body;
 }
@@ -57,7 +67,7 @@ async function graphPost(path: string, params: Record<string, string>): Promise<
   });
   const body = await res.json();
   if (!res.ok || body.error) {
-    throw new Error(`Meta API error: ${body.error?.message || res.statusText}`);
+    throw new Error(describeGraphError(body, res.statusText));
   }
   return body;
 }
@@ -115,9 +125,17 @@ export async function publishPhotoToPage(pageId: string, pageAccessToken: string
 }
 
 // Instagram publishing is a two-step process: create a media container from
-// the image, then publish that container.
+// the image, then publish that container. Photo containers are usually
+// ready immediately, but not always — a brief poll before publishing avoids
+// a race where media_publish is called before Instagram has finished
+// fetching the image (which surfaces as a vague "Media ID is not available"
+// error rather than anything actionable).
 export async function publishPhotoToInstagram(igUserId: string, pageAccessToken: string, imageUrl: string, caption: string): Promise<string> {
   const container = await graphPost(`/${igUserId}/media`, { image_url: imageUrl, caption, access_token: pageAccessToken });
+  if (!container.id) {
+    throw new Error(`Meta API error: no container id returned when creating the Instagram media (got ${JSON.stringify(container)}).`);
+  }
+  await pollInstagramContainer(container.id, pageAccessToken, 4, 1000);
   const published = await graphPost(`/${igUserId}/media_publish`, { creation_id: container.id, access_token: pageAccessToken });
   return published.id;
 }
@@ -136,7 +154,7 @@ async function pollInstagramContainer(containerId: string, pageAccessToken: stri
   for (let i = 0; i < attempts; i++) {
     const { status_code } = await graphGet(`/${containerId}`, { fields: 'status_code', access_token: pageAccessToken });
     if (status_code === 'FINISHED') return 'FINISHED';
-    if (status_code === 'ERROR') throw new Error('Instagram failed to process this video.');
+    if (status_code === 'ERROR') throw new Error('Instagram failed to process this media.');
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return null;
