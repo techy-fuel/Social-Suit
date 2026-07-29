@@ -46,7 +46,7 @@ function readFileAsBase64(file: File): Promise<string> {
 
 interface ComposerDraft {
   postType: 'post' | 'reel' | 'story';
-  selected: Platform[];
+  platform: Platform;
   caption: string;
   date: string;
   hour: string;
@@ -73,7 +73,7 @@ export function ComposerScreen() {
   const { current } = useWorkspaces();
   const { showToast } = useToast();
   const [postType, setPostType] = React.useState<'post' | 'reel' | 'story'>('post');
-  const [selected, setSelected] = React.useState<Platform[]>(['instagram', 'facebook']);
+  const [platform, setPlatform] = React.useState<Platform>('instagram');
   const [preview, setPreview] = React.useState<'mobile' | 'desktop'>('mobile');
   const [caption, setCaption] = React.useState('');
   const [date, setDate] = React.useState(tomorrowIso());
@@ -100,7 +100,7 @@ export function ComposerScreen() {
     const draft = loadDraft(current.key);
     if (!draft) return;
     setPostType(draft.postType);
-    setSelected(draft.selected);
+    setPlatform(draft.platform);
     setCaption(draft.caption);
     setDate(draft.date);
     setHour(draft.hour);
@@ -112,17 +112,13 @@ export function ComposerScreen() {
 
   React.useEffect(() => {
     if (!current || loadedWorkspaceKey.current !== current.key) return;
-    const draft: ComposerDraft = { postType, selected, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
+    const draft: ComposerDraft = { postType, platform, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
     try {
       localStorage.setItem(draftKey(current.key), JSON.stringify(draft));
     } catch {
       // Storage full/unavailable — losing autosave isn't worth surfacing an error for.
     }
-  }, [current, postType, selected, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
-
-  function toggle(p: Platform) {
-    setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
-  }
+  }, [current, postType, platform, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -172,13 +168,13 @@ export function ComposerScreen() {
   }
 
   async function submitPost(status: 'scheduled' | 'draft') {
-    if (!current || over || !caption.trim() || selected.length === 0) return;
+    if (!current || over || !caption.trim()) return;
     const setBusy = status === 'draft' ? setSavingDraft : setSubmitting;
     setBusy(true);
     try {
       const h = Number(hour);
       const time = formatHour(h);
-      await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+      await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
@@ -193,17 +189,17 @@ export function ComposerScreen() {
   }
 
   async function publishNow() {
-    if (!current || over || !caption.trim() || selected.length === 0 || !mediaUrl) return;
+    if (!current || over || !caption.trim() || !mediaUrl) return;
     setPublishingNow(true);
     try {
       const h = Number(hour);
       const time = formatHour(h);
-      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status: 'scheduled', mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform, caption, status: 'scheduled', mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
       const result = await api.publishScheduledPost(created.id);
       if (result.processing) {
         showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — check Planning calendar shortly and hit Publish now there.' });
       } else {
-        showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
+        showToast({ tone: 'positive', title: 'Published', description: `Live on ${platform}.` });
       }
       resetForm();
     } catch (err) {
@@ -233,14 +229,14 @@ export function ComposerScreen() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>New post</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || savingDraft || selected.length === 0} onClick={() => submitPost('draft')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || savingDraft} onClick={() => submitPost('draft')}>
               {savingDraft ? 'Saving…' : 'Save as draft'}
             </Button>
-            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || submitting} onClick={() => submitPost('scheduled')}>
               {submitting ? 'Scheduling…' : 'Schedule'}
             </Button>
             <span title={!caption.trim() ? 'Write a caption above first.' : !mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
-              <Button size="sm" disabled={over || !caption.trim() || publishingNow || selected.length === 0 || !mediaUrl} onClick={publishNow}>
+              <Button size="sm" disabled={over || !caption.trim() || publishingNow || !mediaUrl} onClick={publishNow}>
                 {publishingNow ? 'Publishing…' : 'Publish now'}
               </Button>
             </span>
@@ -248,17 +244,17 @@ export function ComposerScreen() {
         </div>
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Platforms</div>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Platform</div>
           <div style={{ display: 'flex', gap: 10 }}>
             {platforms.map((p) => (
               <button
                 key={p}
-                onClick={() => toggle(p)}
+                onClick={() => setPlatform(p)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
                   borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                  border: `1.5px solid ${selected.includes(p) ? 'var(--accent-primary)' : 'var(--border)'}`,
-                  background: selected.includes(p) ? 'var(--blue-50)' : 'var(--card)',
+                  border: `1.5px solid ${platform === p ? 'var(--accent-primary)' : 'var(--border)'}`,
+                  background: platform === p ? 'var(--blue-50)' : 'var(--card)',
                 }}
               >
                 <PlatformIcon platform={p} size={16} />
