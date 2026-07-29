@@ -14,7 +14,12 @@ import { useToast } from '../ToastContext';
 import { api } from '../api';
 
 const platforms: Platform[] = ['facebook', 'instagram', 'tiktok'];
-const hourOptions = Array.from({ length: 12 }, (_, i) => i + 8);
+const hourOptions = Array.from({ length: 24 }, (_, i) => i);
+
+function formatHour(h: number): string {
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:00 ${h >= 12 ? 'PM' : 'AM'}`;
+}
 
 function tomorrowIso(): string {
   const d = new Date();
@@ -122,7 +127,7 @@ export function ComposerScreen() {
     setBusy(true);
     try {
       const h = Number(hour);
-      const time = `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}`;
+      const time = formatHour(h);
       const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
       showToast({
         tone: 'positive',
@@ -230,7 +235,7 @@ export function ComposerScreen() {
             <Input label="Date" type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div style={{ flex: 1 }}>
-            <Select label="Time" value={hour} onChange={(e) => setHour(e.target.value)} options={hourOptions.map((h) => ({ value: String(h), label: `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? 'PM' : 'AM'}` }))} />
+            <Select label="Time" value={hour} onChange={(e) => setHour(e.target.value)} options={hourOptions.map((h) => ({ value: String(h), label: formatHour(h) }))} />
           </div>
         </div>
 
