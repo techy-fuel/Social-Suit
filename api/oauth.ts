@@ -10,6 +10,10 @@ import { tiktokAuthorizeUrl, exchangeTikTokCode, fetchTikTokCreatorInfo } from '
 
 function redirectUri(req: VercelRequest, provider: string): string {
   const siteUrl = process.env.PUBLIC_SITE_URL || `https://${req.headers.host}`;
+  // TikTok's app dashboard rejects registering a redirect URI that contains
+  // query parameters, so its callback has to be the bare path — provider
+  // gets recovered from the signed `state` instead (see handler() below).
+  if (provider === 'tiktok') return `${siteUrl}/api/oauth`;
   return `${siteUrl}/api/oauth?provider=${provider}&action=callback`;
 }
 
@@ -29,7 +33,9 @@ async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'me
   // silently kick off an OAuth flow for the wrong tenant.
   await getWorkspaceId(workspace, session.accountId);
 
-  const state = signState({ accountId: session.accountId, workspace, exp: Date.now() + 10 * 60 * 1000 });
+  // provider travels inside the signed state too — TikTok's callback has no
+  // ?provider= query param to read it back from (see redirectUri() above).
+  const state = signState({ accountId: session.accountId, workspace, provider, exp: Date.now() + 10 * 60 * 1000 });
   const url = provider === 'meta'
     ? metaAuthorizeUrl(redirectUri(req, provider), state)
     : provider === 'google'
@@ -38,10 +44,10 @@ async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'me
   res.redirect(302, url);
 }
 
-function parseState(req: VercelRequest): { accountId: number; workspace: string; exp: number } | null {
+function parseState(req: VercelRequest): { accountId: number; workspace: string; provider: string; exp: number } | null {
   const session = getSession(req);
   const stateToken = String(req.query.state || '');
-  const state = verifyState<{ accountId: number; workspace: string; exp: number }>(stateToken);
+  const state = verifyState<{ accountId: number; workspace: string; provider: string; exp: number }>(stateToken);
   if (!session || !state || state.exp < Date.now() || state.accountId !== session.accountId) return null;
   return state;
 }
@@ -191,16 +197,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provider = String(req.query.provider || '');
   const action = String(req.query.action || '');
 
-  if (provider !== 'meta' && provider !== 'google' && provider !== 'tiktok') {
-    res.status(400).json({ error: 'Unknown OAuth provider.' });
+  if (action === 'start') {
+    if (provider !== 'meta' && provider !== 'google' && provider !== 'tiktok') {
+      res.status(400).json({ error: 'Unknown OAuth provider.' });
+      return;
+    }
+    return oauthStart(req, res, provider);
+  }
+
+  // A bare callback (no ?provider=/&action=callback — TikTok's redirect URI
+  // can't carry query params) still has ?code=&state=; recover the provider
+  // from state instead of the URL in that case.
+  if (action === 'callback' || (req.query.code && req.query.state)) {
+    const resolvedProvider = provider || parseState(req)?.provider;
+    if (resolvedProvider === 'meta') return metaCallback(req, res);
+    if (resolvedProvider === 'google') return googleCallback(req, res);
+    if (resolvedProvider === 'tiktok') return tiktokCallback(req, res);
+    res.redirect(302, '/connections?oauth_error=invalid_state');
     return;
   }
 
-  if (action === 'start') return oauthStart(req, res, provider);
-  if (action === 'callback') {
-    if (provider === 'meta') return metaCallback(req, res);
-    if (provider === 'google') return googleCallback(req, res);
-    return tiktokCallback(req, res);
-  }
   res.status(400).json({ error: 'Unknown OAuth action.' });
 }
