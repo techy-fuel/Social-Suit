@@ -19,8 +19,12 @@ function appSecret(): string {
 export const META_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_messaging',
+  'pages_manage_engagement',
   'instagram_basic',
   'instagram_content_publish',
+  'instagram_manage_comments',
+  'instagram_manage_messages',
   'business_management',
 ].join(',');
 
@@ -153,4 +157,28 @@ export async function finishInstagramVideo(containerId: string, igUserId: string
   if (!ready) return { status: 'processing', containerId };
   const published = await graphPost(`/${igUserId}/media_publish`, { creation_id: containerId, access_token: pageAccessToken });
   return { status: 'published', platformPostId: published.id };
+}
+
+export async function sendMessengerReply(pageId: string, pageAccessToken: string, recipientPsid: string, text: string): Promise<void> {
+  await graphPost(`/${pageId}/messages`, {
+    recipient: JSON.stringify({ id: recipientPsid }),
+    message: JSON.stringify({ text }),
+    access_token: pageAccessToken,
+  });
+}
+
+export async function sendInstagramDmReply(igUserId: string, pageAccessToken: string, recipientIgsid: string, text: string): Promise<void> {
+  await graphPost(`/${igUserId}/messages`, {
+    recipient: JSON.stringify({ id: recipientIgsid }),
+    message: JSON.stringify({ text }),
+    access_token: pageAccessToken,
+  });
+}
+
+export async function replyToFacebookComment(commentId: string, pageAccessToken: string, text: string): Promise<void> {
+  await graphPost(`/${commentId}/comments`, { message: text, access_token: pageAccessToken });
+}
+
+export async function replyToInstagramComment(commentId: string, pageAccessToken: string, text: string): Promise<void> {
+  await graphPost(`/${commentId}/replies`, { message: text, access_token: pageAccessToken });
 }

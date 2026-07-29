@@ -91,12 +91,13 @@ up yet. Connecting stores a long-lived Page access token on that workspace's
 and either publishing it immediately (`Auto-publish` toggle, or the "Publish
 now" action on Planning calendar) or leaving it scheduled for manual publish
 later. There is **no cron/queue publishing posts at their scheduled
-day/time** — the day/hour fields are organizational only; add a real
-`scheduled_at` timestamp plus a Vercel Cron job (Hobby plan only runs cron
-once/day, so exact-time publishing needs a Pro plan or an external pinger)
-if that's needed. `pages_manage_posts` isn't requested by the OAuth scope by
-default (Meta gates it behind a separate "Facebook Pages" use case in the
-app dashboard) — add it there before testing Facebook Page publishing.
+day/time** — `scheduled_date` + `hour` are stored, so the data model can
+support it, but nothing polls for due posts yet; add a Vercel Cron job
+(Hobby plan only runs cron once/day, so exact-time publishing needs a Pro
+plan or an external pinger) if that's needed. `pages_manage_posts` isn't
+requested by the OAuth scope by default (Meta gates it behind a separate
+"Facebook Pages" use case in the app dashboard) — add it there before
+testing Facebook Page publishing.
 
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
@@ -115,6 +116,32 @@ Instagram's own processing can outlast a single request's time budget; if so
 the post is left in a `processing` state with the container id saved, and
 the next "Publish now" click resumes and finishes it rather than
 re-uploading.
+
+## Real inbox (Meta webhooks)
+
+Facebook/Instagram DMs and comments arrive through a real Meta webhook
+(`api/webhooks.ts`, our 12th and last function under the Hobby plan's cap —
+consolidate an existing route via `?action=` before adding another). It has
+no session/cookie (Meta calls it server-to-server), so authenticity is a
+shared secret baked into the registered callback URL itself
+(`?provider=meta&secret=...`), checked on every request. Setup:
+
+1. Generate a random secret and set it as `META_WEBHOOK_SECRET`.
+2. Meta App dashboard → add the **Webhooks** product → Page/Instagram
+   subscription → Callback URL: `https://<your-domain>/api/webhooks?provider=meta&secret=<that secret>`, Verify Token: the same secret.
+3. Subscribe to `messages` and `feed` (Page) / `messages` and `comments`
+   (Instagram) fields.
+4. Reconnect Facebook/Instagram from the Connections page — the OAuth scope
+   now includes `pages_messaging`, `pages_manage_engagement`,
+   `instagram_manage_messages`, `instagram_manage_comments`, none of which
+   existing connections were granted before this.
+
+Replying in the Unified inbox calls the real Send/comment-reply API
+(`api/conversations.ts`) using the connected account's token; if that call
+fails the reply still saves locally but the response includes a
+`deliveryError` so the UI can say so instead of claiming it sent.
+Conversations seeded before this feature (demo data) have no `sender_id`,
+so replying to those only saves locally — same as before, no crash.
 
 ## Known gaps
 

@@ -67,7 +67,7 @@ export const api = {
   ),
 
   replyToConversation: (id: number, reply: string) =>
-    request(`conversations`, { method: 'POST', body: JSON.stringify({ id, reply }) }),
+    request<{ id: number; deliveryError: string | null }>(`conversations`, { method: 'POST', body: JSON.stringify({ id, reply }) }),
 
   smartlinks: (workspace: string) => request<{ id: number; label: string; clicks: number }[]>(
     `smartlinks?workspace=${encodeURIComponent(workspace)}`

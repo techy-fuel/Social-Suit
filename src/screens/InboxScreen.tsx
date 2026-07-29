@@ -29,9 +29,13 @@ export function InboxScreen() {
     if (!active || !replyText.trim()) return;
     setSending(true);
     try {
-      await api.replyToConversation(active.id, replyText.trim());
+      const result = await api.replyToConversation(active.id, replyText.trim());
       setReplyText('');
-      showToast({ tone: 'positive', title: 'Reply sent', description: `Marked resolved — ${active.name}` });
+      if (result.deliveryError) {
+        showToast({ tone: 'error', title: "Saved, but didn't deliver", description: result.deliveryError });
+      } else {
+        showToast({ tone: 'positive', title: 'Reply sent', description: `Marked resolved — ${active.name}` });
+      }
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't send reply", description: err instanceof Error ? err.message : String(err) });

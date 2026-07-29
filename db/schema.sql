@@ -126,8 +126,13 @@ CREATE TABLE IF NOT EXISTS conversations (
   time_label TEXT NOT NULL,
   unread BOOLEAN NOT NULL DEFAULT true,
   resolved BOOLEAN NOT NULL DEFAULT false,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Set once a real webhook-sourced message/comment lands here.
+  external_id TEXT,
+  sender_id TEXT,
+  kind TEXT NOT NULL DEFAULT 'dm'
 );
+CREATE UNIQUE INDEX IF NOT EXISTS conversations_workspace_external_id_idx ON conversations (workspace_id, external_id) WHERE external_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS conversation_replies (
   id SERIAL PRIMARY KEY,
