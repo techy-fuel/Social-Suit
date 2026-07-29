@@ -82,13 +82,13 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta, YouTube)
+## Real platform integration (Meta, YouTube, TikTok)
 
 `api/oauth.ts` is a single consolidated OAuth handler for every provider
-(`?provider=meta|google&action=start|callback`) — deliberately not one file
-per provider, since Vercel's Hobby plan caps a deployment at 12 serverless
-functions and this project is already at that cap. Add new platforms as
-another `provider` branch here, not a new top-level file.
+(`?provider=meta|google|tiktok&action=start|callback`) — deliberately not one
+file per provider, since Vercel's Hobby plan caps a deployment at 12
+serverless functions and this project is already at that cap. Add new
+platforms as another `provider` branch here, not a new top-level file.
 
 ### Meta (Facebook Pages + Instagram)
 
@@ -134,6 +134,34 @@ rather than silently creating an unrefreshable connection. Only publishes
 video (YouTube has no photo-post concept); connections page shows one
 "YouTube" row (a channel manages one upload target, unlike Meta's several
 Pages).
+
+### TikTok
+
+Connects via TikTok's Login Kit OAuth (`api/_tiktok.ts`), scoped to
+`user.info.basic,video.publish` (Direct Post). Two things make this
+different from Meta/YouTube:
+
+- **Unaudited apps can only post privately.** TikTok always returns which
+  `privacy_level` options are actually available for the connected account
+  via a required `creator_info/query` call made right before every publish
+  — for an app that hasn't been through TikTok's audit, that list only ever
+  contains `SELF_ONLY`, so uploaded videos are visible only to the account
+  owner (they show up on the profile as private) until TikTok approves the
+  app for public posting. `publishVideoToTikTok()` always picks the most
+  public option available, so this fixes itself automatically once audited
+  — no code change needed later.
+- **Only single-chunk uploads (≤64MB) are implemented.** TikTok's Content
+  Posting API wants the upload declared as fixed-size chunks up front;
+  we only support sending the whole file as one chunk, which the API caps
+  at 64MB. Larger videos are rejected with a clear error rather than
+  attempting a multi-chunk upload (not built — most short TikTok clips fit
+  well under this).
+
+TikTok access tokens expire in ~24h like YouTube's, but unlike Google, every
+refresh **rotates the refresh token too** — `getValidTikTokAccessToken()` in
+`api/calendar.ts` persists both the new access and refresh token on every
+refresh, not just the access token. Only publishes video (no photo-post
+support yet).
 
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
@@ -181,7 +209,9 @@ so replying to those only saves locally — same as before, no crash.
 
 ## Known gaps
 
-- TikTok, YouTube, and other platforms still just flip a status flag on Connections — no real integration.
+- LinkedIn, Threads, X, and other platforms still just flip a status flag on Connections — no real integration.
+- TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
+- TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).
 - One user per account — no team invites/multiple users per tenant yet.
 - No billing/subscription system — every account has unlimited access.
 - No pagination — list endpoints (conversations, scheduled posts, etc.) return everything for a workspace in one call.

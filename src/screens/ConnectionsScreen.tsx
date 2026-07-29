@@ -13,6 +13,7 @@ import { api } from '../api';
 // just flips a status flag until that platform's integration is built.
 const META_OAUTH_LABELS = new Set(['Facebook', 'Instagram']);
 const GOOGLE_OAUTH_LABELS = new Set(['YouTube']);
+const TIKTOK_OAUTH_LABELS = new Set(['TikTok (personal)', 'TikTok (business)']);
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {
   connected: 'positive',
@@ -55,6 +56,10 @@ export function ConnectionsScreen() {
     window.location.href = `/api/oauth?provider=google&action=start&workspace=${encodeURIComponent(key)}`;
   }
 
+  function connectWithTikTok() {
+    window.location.href = `/api/oauth?provider=tiktok&action=start&workspace=${encodeURIComponent(key)}`;
+  }
+
   // true if this label has a real OAuth flow to hand off to (in which case
   // the caller shouldn't also fall back to the fake status-flag toggle).
   function connectFor(label: string): boolean {
@@ -64,6 +69,10 @@ export function ConnectionsScreen() {
     }
     if (GOOGLE_OAUTH_LABELS.has(label)) {
       connectWithGoogle();
+      return true;
+    }
+    if (TIKTOK_OAUTH_LABELS.has(label)) {
+      connectWithTikTok();
       return true;
     }
     return false;
@@ -97,6 +106,7 @@ export function ConnectionsScreen() {
         <div style={{ display: 'flex', gap: 8 }}>
           <Button size="sm" variant="secondary" onClick={connectWithMeta}>Connect a Facebook Page</Button>
           <Button size="sm" variant="secondary" onClick={connectWithGoogle}>Connect YouTube</Button>
+          <Button size="sm" variant="secondary" onClick={connectWithTikTok}>Connect TikTok</Button>
         </div>
       </div>
 
