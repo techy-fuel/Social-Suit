@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS connections (
   -- multiple Facebook Pages) — platform_account_id is what's actually
   -- unique per connected account, not platform+label.
   access_token TEXT,
+  refresh_token TEXT,
   platform_account_id TEXT,
   token_expires_at TIMESTAMPTZ
 );

@@ -9,10 +9,10 @@ import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
 import { api } from '../api';
 
-// These two are wired to a real Meta OAuth flow (api/oauth.ts); everything
-// else still just flips a status flag until that platform's integration
-// is built.
+// These are wired to real OAuth flows (api/oauth.ts); everything else still
+// just flips a status flag until that platform's integration is built.
 const META_OAUTH_LABELS = new Set(['Facebook', 'Instagram']);
+const GOOGLE_OAUTH_LABELS = new Set(['YouTube']);
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {
   connected: 'positive',
@@ -51,6 +51,24 @@ export function ConnectionsScreen() {
     window.location.href = `/api/oauth?provider=meta&action=start&workspace=${encodeURIComponent(key)}`;
   }
 
+  function connectWithGoogle() {
+    window.location.href = `/api/oauth?provider=google&action=start&workspace=${encodeURIComponent(key)}`;
+  }
+
+  // true if this label has a real OAuth flow to hand off to (in which case
+  // the caller shouldn't also fall back to the fake status-flag toggle).
+  function connectFor(label: string): boolean {
+    if (META_OAUTH_LABELS.has(label)) {
+      connectWithMeta();
+      return true;
+    }
+    if (GOOGLE_OAUTH_LABELS.has(label)) {
+      connectWithGoogle();
+      return true;
+    }
+    return false;
+  }
+
   async function setStatus(id: number, status: string, label: string) {
     setPendingId(id);
     try {
@@ -76,7 +94,10 @@ export function ConnectionsScreen() {
             Platforms available to {current!.name}
           </div>
         </div>
-        <Button size="sm" variant="secondary" onClick={connectWithMeta}>Connect a Facebook Page</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="sm" variant="secondary" onClick={connectWithMeta}>Connect a Facebook Page</Button>
+          <Button size="sm" variant="secondary" onClick={connectWithGoogle}>Connect YouTube</Button>
+        </div>
       </div>
 
       {error && <div style={{ color: 'var(--red)', fontSize: 'var(--text-sm)' }}>Couldn't load connections: {error}</div>}
@@ -93,12 +114,12 @@ export function ConnectionsScreen() {
             {c.account && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-2xs)', color: 'var(--text-muted)' }}>{c.account}</div>}
             <div>
               {c.status === 'not-connected' && (
-                <Button size="sm" variant="secondary" disabled={pendingId === c.id} onClick={() => (META_OAUTH_LABELS.has(c.label) ? connectWithMeta() : setStatus(c.id, 'connected', c.label))}>
+                <Button size="sm" variant="secondary" disabled={pendingId === c.id} onClick={() => { if (!connectFor(c.label)) setStatus(c.id, 'connected', c.label); }}>
                   {pendingId === c.id ? 'Connecting…' : 'Connect'}
                 </Button>
               )}
               {c.status === 'pending' && (
-                <Button size="sm" variant="primary" disabled={pendingId === c.id} onClick={() => (META_OAUTH_LABELS.has(c.label) ? connectWithMeta() : setStatus(c.id, 'connected', c.label))}>
+                <Button size="sm" variant="primary" disabled={pendingId === c.id} onClick={() => { if (!connectFor(c.label)) setStatus(c.id, 'connected', c.label); }}>
                   {pendingId === c.id ? 'Reconnecting…' : 'Reconnect'}
                 </Button>
               )}

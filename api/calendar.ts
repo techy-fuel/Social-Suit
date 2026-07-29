@@ -3,9 +3,22 @@ import { sql, getWorkspaceId, badRequest } from './_db.js';
 import { withAuth, Session } from './_auth.js';
 import { getSupabaseAdmin } from './_supabase.js';
 import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo } from './_meta.js';
+import { refreshGoogleAccessToken, uploadVideoToYouTube } from './_google.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
 
 const MEDIA_BUCKET = 'post-media';
+
+// YouTube access tokens expire hourly, unlike Meta's long-lived Page
+// tokens — refresh (and persist the new token) whenever it's expired or
+// about to be.
+async function getValidYouTubeAccessToken(connId: number, accessToken: string, refreshToken: string | null, expiresAt: string | null): Promise<string> {
+  const expiringSoon = !expiresAt || new Date(expiresAt).getTime() < Date.now() + 60_000;
+  if (!expiringSoon) return accessToken;
+  if (!refreshToken) throw new Error("This YouTube connection can't refresh its token — reconnect it on the Connections page.");
+  const refreshed = await refreshGoogleAccessToken(refreshToken);
+  await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
+  return refreshed.accessToken;
+}
 
 async function deleteMedia(path: string | null, storage: string | null) {
   if (!path) return;
@@ -80,12 +93,15 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
   const post = rows[0];
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (!post.media_url) return badRequest(res, 'This post has no media attached — publishing requires an image or video for now.');
-  if (post.platform !== 'facebook' && post.platform !== 'instagram') {
+  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube') {
     return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
+  }
+  if (post.platform === 'youtube' && post.media_type !== 'video') {
+    return badRequest(res, 'YouTube only accepts video — attach a video to this post.');
   }
   if (!post.connection_id) return badRequest(res, 'This post has no connected account attached.');
 
-  const conns = await sql`SELECT access_token, platform_account_id FROM connections WHERE id = ${post.connection_id} AND workspace_id = ${post.workspace_id} AND status = 'connected'`;
+  const conns = await sql`SELECT access_token, refresh_token, platform_account_id, token_expires_at FROM connections WHERE id = ${post.connection_id} AND workspace_id = ${post.workspace_id} AND status = 'connected'`;
   const conn = conns[0];
   if (!conn || !conn.access_token || !conn.platform_account_id) {
     return badRequest(res, `That account isn't connected anymore — reconnect it on the Connections page.`);
@@ -107,6 +123,10 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
         return res.status(202).json({ ok: true, processing: true });
       }
       platformPostId = result.platformPostId;
+    } else if (post.platform === 'youtube') {
+      const accessToken = await getValidYouTubeAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
+      const title = post.caption.split('\n')[0].slice(0, 100) || 'New video';
+      platformPostId = await uploadVideoToYouTube(accessToken, post.media_url, title, post.caption);
     } else if (post.platform === 'facebook' && post.media_type === 'video') {
       platformPostId = await publishVideoToPage(conn.platform_account_id, conn.access_token, post.media_url, post.caption);
     } else if (post.platform === 'facebook') {

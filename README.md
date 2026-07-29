@@ -82,11 +82,18 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta)
+## Real platform integration (Meta, YouTube)
+
+`api/oauth.ts` is a single consolidated OAuth handler for every provider
+(`?provider=meta|google&action=start|callback`) — deliberately not one file
+per provider, since Vercel's Hobby plan caps a deployment at 12 serverless
+functions and this project is already at that cap. Add new platforms as
+another `provider` branch here, not a new top-level file.
+
+### Meta (Facebook Pages + Instagram)
 
 Facebook Pages and Instagram Business accounts connect via a real Meta Graph
-API OAuth flow (`api/oauth.ts`, `api/_meta.ts`) — no other platform is wired
-up yet. One OAuth grant connects **every** Page the authorizing user manages
+API OAuth flow (`api/_meta.ts`). One OAuth grant connects **every** Page the authorizing user manages
 (plus each Page's linked Instagram account) as its own `connections` row,
 upserted by `platform_account_id` — so a workspace can have several Facebook
 Pages connected at once, not just one. The Connections page's "Connect a
@@ -98,16 +105,35 @@ video, then either publish to all of them at once ("Publish now" — creates
 one `scheduled_posts` row per target, each tied to its `connection_id`, and
 publishes each independently so one failing doesn't block the rest) or leave
 them saved for manual publish later from Planning calendar. There is **no
-cron/queue
-publishing posts at their scheduled day/time** — `scheduled_date` + `hour`
-are stored, so the data model can support it, but nothing polls for due
-posts yet; add a Vercel Cron job (Hobby plan only runs cron once/day, so
+cron/queue publishing posts at their scheduled day/time** — `scheduled_date`
++ `hour` are stored, so the data model can support it, but nothing polls for
+due posts yet; add a Vercel Cron job (Hobby plan only runs cron once/day, so
 exact-time publishing needs a Pro plan or an external pinger) if that's
 needed. `META_SCOPES` includes `pages_manage_posts`, `pages_manage_engagement`,
 etc. — several of these are gated behind separate "use cases" in Meta's app
 dashboard (Use cases → Content management) that must be added there before
 an OAuth attempt requesting them will succeed; existing connections made
 before a scope was added need to be reconnected to actually be granted it.
+
+### YouTube
+
+Connects via standard Google OAuth (`api/_google.ts`), scoped to
+`youtube.upload` + `youtube.readonly`. Unlike Meta (which just gives Google/Meta
+a URL to fetch), the YouTube Data API's `videos.insert` needs the actual
+bytes streamed through an authenticated resumable upload session — our
+backend fetches the video from wherever it's hosted (R2/Supabase) and pipes
+it straight into that session without buffering the whole file, but it's
+still bounded by the Vercel function's execution time budget, so very large
+or slow-to-fetch videos may not finish in one request. YouTube access tokens
+expire hourly; `refresh_token` is stored per connection and
+`getValidYouTubeAccessToken()` in `api/calendar.ts` refreshes automatically
+before each publish. Requires `access_type=offline` + `prompt=consent` on
+the authorize URL to actually receive a refresh token — Google won't return
+one on a repeat consent otherwise, which is treated as a connection failure
+rather than silently creating an unrefreshable connection. Only publishes
+video (YouTube has no photo-post concept); connections page shows one
+"YouTube" row (a channel manages one upload target, unlike Meta's several
+Pages).
 
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
