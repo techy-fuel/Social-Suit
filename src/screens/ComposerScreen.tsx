@@ -8,7 +8,6 @@ import { Select } from '../components/forms/Select';
 import { Input } from '../components/forms/Input';
 import { Switch } from '../components/forms/Switch';
 import { PlatformIcon, Platform } from '../components/data/PlatformIcon';
-import { Tag } from '../components/core/Tag';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
 import { api } from '../api';
@@ -46,6 +45,32 @@ function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
+interface ComposerDraft {
+  postType: 'post' | 'reel' | 'story';
+  selected: Platform[];
+  autoPublish: boolean;
+  caption: string;
+  date: string;
+  hour: string;
+  mediaUrl: string | null;
+  mediaPath: string | null;
+  mediaType: 'image' | 'video' | null;
+  mediaStorage: string | null;
+}
+
+function draftKey(workspaceKey: string): string {
+  return `ss-composer-draft:${workspaceKey}`;
+}
+
+function loadDraft(workspaceKey: string): ComposerDraft | null {
+  try {
+    const raw = localStorage.getItem(draftKey(workspaceKey));
+    return raw ? (JSON.parse(raw) as ComposerDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ComposerScreen() {
   const { current } = useWorkspaces();
   const { showToast } = useToast();
@@ -53,9 +78,7 @@ export function ComposerScreen() {
   const [selected, setSelected] = React.useState<Platform[]>(['instagram', 'facebook']);
   const [preview, setPreview] = React.useState<'mobile' | 'desktop'>('mobile');
   const [autoPublish, setAutoPublish] = React.useState(true);
-  const [caption, setCaption] = React.useState(
-    "Registration for the Winter Hifz Intensive closes this weekend. Reserve your child's seat before spots fill up — link in bio for details and payment plans."
-  );
+  const [caption, setCaption] = React.useState('');
   const [date, setDate] = React.useState(tomorrowIso());
   const [hour, setHour] = React.useState('9');
   const [submitting, setSubmitting] = React.useState(false);
@@ -66,9 +89,39 @@ export function ComposerScreen() {
   const [mediaStorage, setMediaStorage] = React.useState<string | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const loadedWorkspaceKey = React.useRef<string | null>(null);
 
   const limit = 2200;
   const over = caption.length > limit;
+
+  // Restore an unsaved draft (survives an accidental refresh/close) the
+  // first time we see each workspace.
+  React.useEffect(() => {
+    if (!current || loadedWorkspaceKey.current === current.key) return;
+    loadedWorkspaceKey.current = current.key;
+    const draft = loadDraft(current.key);
+    if (!draft) return;
+    setPostType(draft.postType);
+    setSelected(draft.selected);
+    setAutoPublish(draft.autoPublish);
+    setCaption(draft.caption);
+    setDate(draft.date);
+    setHour(draft.hour);
+    setMediaUrl(draft.mediaUrl);
+    setMediaPath(draft.mediaPath);
+    setMediaType(draft.mediaType);
+    setMediaStorage(draft.mediaStorage);
+  }, [current]);
+
+  React.useEffect(() => {
+    if (!current || loadedWorkspaceKey.current !== current.key) return;
+    const draft: ComposerDraft = { postType, selected, autoPublish, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
+    try {
+      localStorage.setItem(draftKey(current.key), JSON.stringify(draft));
+    } catch {
+      // Storage full/unavailable — losing autosave isn't worth surfacing an error for.
+    }
+  }, [current, postType, selected, autoPublish, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
 
   function toggle(p: Platform) {
     setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
@@ -147,6 +200,19 @@ export function ComposerScreen() {
           showToast({ tone: 'error', title: "Couldn't auto-publish", description: err instanceof Error ? err.message : String(err) });
         }
       }
+
+      // It's saved server-side now (as a draft or a scheduled post) —
+      // clear the local autosave and reset the form for the next post.
+      try {
+        localStorage.removeItem(draftKey(current.key));
+      } catch {
+        // ignore
+      }
+      setCaption('');
+      setMediaUrl(null);
+      setMediaPath(null);
+      setMediaType(null);
+      setMediaStorage(null);
     } catch (err) {
       showToast({ tone: 'error', title: `Couldn't ${status === 'draft' ? 'save draft' : 'schedule post'}`, description: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -240,14 +306,10 @@ export function ComposerScreen() {
         </div>
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)' }}>Caption</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <Tag color="var(--blue-sky)">Preset: Enrollment</Tag>
-            </div>
-          </div>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Caption</div>
           <Textarea
             value={caption}
+            placeholder="Write a caption…"
             rows={5}
             onChange={(e) => setCaption(e.target.value)}
             error={over ? `Exceeds Instagram's ${limit.toLocaleString()}-character limit by ${caption.length - limit} characters` : undefined}
