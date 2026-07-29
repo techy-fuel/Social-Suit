@@ -73,7 +73,7 @@ async function metaCallback(req: VercelRequest, res: VercelResponse) {
       await sql`
         INSERT INTO connections (workspace_id, platform, label, status, account, access_token, platform_account_id, sort_order)
         VALUES (${workspaceId}, 'facebook', ${page.name}, 'connected', ${page.name}, ${page.access_token}, ${page.id}, ${sortBase})
-        ON CONFLICT (workspace_id, platform_account_id) DO UPDATE SET
+        ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
           status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token`;
 
       if (page.instagram) {
@@ -81,7 +81,7 @@ async function metaCallback(req: VercelRequest, res: VercelResponse) {
         await sql`
           INSERT INTO connections (workspace_id, platform, label, status, account, access_token, platform_account_id, sort_order)
           VALUES (${workspaceId}, 'instagram', ${'@' + page.instagram.username}, 'connected', ${'@' + page.instagram.username}, ${page.access_token}, ${page.instagram.id}, ${sortBase + 1})
-          ON CONFLICT (workspace_id, platform_account_id) DO UPDATE SET
+          ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
             status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token`;
       }
     }
