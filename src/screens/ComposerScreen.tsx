@@ -6,7 +6,6 @@ import { Radio } from '../components/forms/Radio';
 import { Textarea } from '../components/forms/Textarea';
 import { Select } from '../components/forms/Select';
 import { Input } from '../components/forms/Input';
-import { Switch } from '../components/forms/Switch';
 import { PlatformIcon, Platform } from '../components/data/PlatformIcon';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
@@ -48,7 +47,6 @@ function readFileAsBase64(file: File): Promise<string> {
 interface ComposerDraft {
   postType: 'post' | 'reel' | 'story';
   selected: Platform[];
-  autoPublish: boolean;
   caption: string;
   date: string;
   hour: string;
@@ -77,12 +75,12 @@ export function ComposerScreen() {
   const [postType, setPostType] = React.useState<'post' | 'reel' | 'story'>('post');
   const [selected, setSelected] = React.useState<Platform[]>(['instagram', 'facebook']);
   const [preview, setPreview] = React.useState<'mobile' | 'desktop'>('mobile');
-  const [autoPublish, setAutoPublish] = React.useState(true);
   const [caption, setCaption] = React.useState('');
   const [date, setDate] = React.useState(tomorrowIso());
   const [hour, setHour] = React.useState('9');
   const [submitting, setSubmitting] = React.useState(false);
   const [savingDraft, setSavingDraft] = React.useState(false);
+  const [publishingNow, setPublishingNow] = React.useState(false);
   const [mediaUrl, setMediaUrl] = React.useState<string | null>(null);
   const [mediaPath, setMediaPath] = React.useState<string | null>(null);
   const [mediaType, setMediaType] = React.useState<'image' | 'video' | null>(null);
@@ -103,7 +101,6 @@ export function ComposerScreen() {
     if (!draft) return;
     setPostType(draft.postType);
     setSelected(draft.selected);
-    setAutoPublish(draft.autoPublish);
     setCaption(draft.caption);
     setDate(draft.date);
     setHour(draft.hour);
@@ -115,13 +112,13 @@ export function ComposerScreen() {
 
   React.useEffect(() => {
     if (!current || loadedWorkspaceKey.current !== current.key) return;
-    const draft: ComposerDraft = { postType, selected, autoPublish, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
+    const draft: ComposerDraft = { postType, selected, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
     try {
       localStorage.setItem(draftKey(current.key), JSON.stringify(draft));
     } catch {
       // Storage full/unavailable — losing autosave isn't worth surfacing an error for.
     }
-  }, [current, postType, selected, autoPublish, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
+  }, [current, postType, selected, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
 
   function toggle(p: Platform) {
     setSelected((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
@@ -181,43 +178,53 @@ export function ComposerScreen() {
     try {
       const h = Number(hour);
       const time = formatHour(h);
-      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+      await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
       showToast({
         tone: 'positive',
         title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
         description: `${formatDate(date)} · ${time} — check Planning calendar.`,
       });
-
-      if (status === 'scheduled' && autoPublish && mediaUrl) {
-        try {
-          const result = await api.publishScheduledPost(created.id);
-          if (result.processing) {
-            showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — check Planning calendar shortly and hit Publish now again.' });
-          } else {
-            showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
-          }
-        } catch (err) {
-          showToast({ tone: 'error', title: "Couldn't auto-publish", description: err instanceof Error ? err.message : String(err) });
-        }
-      }
-
-      // It's saved server-side now (as a draft or a scheduled post) —
-      // clear the local autosave and reset the form for the next post.
-      try {
-        localStorage.removeItem(draftKey(current.key));
-      } catch {
-        // ignore
-      }
-      setCaption('');
-      setMediaUrl(null);
-      setMediaPath(null);
-      setMediaType(null);
-      setMediaStorage(null);
+      resetForm();
     } catch (err) {
       showToast({ tone: 'error', title: `Couldn't ${status === 'draft' ? 'save draft' : 'schedule post'}`, description: err instanceof Error ? err.message : String(err) });
     } finally {
       setBusy(false);
     }
+  }
+
+  async function publishNow() {
+    if (!current || over || !caption.trim() || selected.length === 0 || !mediaUrl) return;
+    setPublishingNow(true);
+    try {
+      const h = Number(hour);
+      const time = formatHour(h);
+      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: selected[0], caption, status: 'scheduled', mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+      const result = await api.publishScheduledPost(created.id);
+      if (result.processing) {
+        showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — check Planning calendar shortly and hit Publish now there.' });
+      } else {
+        showToast({ tone: 'positive', title: 'Published', description: `Live on ${selected[0]}.` });
+      }
+      resetForm();
+    } catch (err) {
+      showToast({ tone: 'error', title: "Couldn't publish", description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPublishingNow(false);
+    }
+  }
+
+  function resetForm() {
+    if (!current) return;
+    try {
+      localStorage.removeItem(draftKey(current.key));
+    } catch {
+      // ignore
+    }
+    setCaption('');
+    setMediaUrl(null);
+    setMediaPath(null);
+    setMediaType(null);
+    setMediaStorage(null);
   }
 
   return (
@@ -229,9 +236,14 @@ export function ComposerScreen() {
             <Button variant="secondary" size="sm" disabled={over || savingDraft || selected.length === 0} onClick={() => submitPost('draft')}>
               {savingDraft ? 'Saving…' : 'Save as draft'}
             </Button>
-            <Button size="sm" disabled={over || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
+            <Button variant="secondary" size="sm" disabled={over || submitting || selected.length === 0} onClick={() => submitPost('scheduled')}>
               {submitting ? 'Scheduling…' : 'Schedule'}
             </Button>
+            <span title={!mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
+              <Button size="sm" disabled={over || publishingNow || selected.length === 0 || !mediaUrl} onClick={publishNow}>
+                {publishingNow ? 'Publishing…' : 'Publish now'}
+              </Button>
+            </span>
           </div>
         </div>
 
@@ -317,19 +329,6 @@ export function ComposerScreen() {
           />
         </div>
 
-        <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Auto-publish</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-              {autoPublish
-                ? mediaUrl
-                  ? 'Publishes to the connected account immediately after scheduling.'
-                  : 'Add an image or video above — publishing requires media right now.'
-                : "You'll publish this manually later from Planning calendar."}
-            </div>
-          </div>
-          <Switch checked={autoPublish} onChange={setAutoPublish} />
-        </div>
       </div>
 
       <div style={{ flex: 1, position: 'sticky', top: 0 }}>
