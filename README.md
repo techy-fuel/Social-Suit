@@ -88,16 +88,17 @@ Facebook Pages and Instagram Business accounts connect via a real Meta Graph
 API OAuth flow (`api/oauth.ts`, `api/_meta.ts`) — no other platform is wired
 up yet. Connecting stores a long-lived Page access token on that workspace's
 `connections` row. Post composer supports attaching one image or one video
-and either publishing it immediately (`Auto-publish` toggle, or the "Publish
-now" action on Planning calendar) or leaving it scheduled for manual publish
-later. There is **no cron/queue publishing posts at their scheduled
-day/time** — `scheduled_date` + `hour` are stored, so the data model can
-support it, but nothing polls for due posts yet; add a Vercel Cron job
-(Hobby plan only runs cron once/day, so exact-time publishing needs a Pro
-plan or an external pinger) if that's needed. `pages_manage_posts` isn't
-requested by the OAuth scope by default (Meta gates it behind a separate
-"Facebook Pages" use case in the app dashboard) — add it there before
-testing Facebook Page publishing.
+and either publishing it immediately ("Publish now") or leaving it saved
+for manual publish later from Planning calendar. There is **no cron/queue
+publishing posts at their scheduled day/time** — `scheduled_date` + `hour`
+are stored, so the data model can support it, but nothing polls for due
+posts yet; add a Vercel Cron job (Hobby plan only runs cron once/day, so
+exact-time publishing needs a Pro plan or an external pinger) if that's
+needed. `META_SCOPES` includes `pages_manage_posts`, `pages_manage_engagement`,
+etc. — several of these are gated behind separate "use cases" in Meta's app
+dashboard (Use cases → Content management) that must be added there before
+an OAuth attempt requesting them will succeed; existing connections made
+before a scope was added need to be reconnected to actually be granted it.
 
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket

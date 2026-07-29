@@ -12,15 +12,12 @@ function appSecret(): string {
   return s;
 }
 
-// pages_manage_posts is deliberately left out: it's only needed to actually
-// publish to a Page, which isn't built yet (scheduled posts are stored in
-// our own DB only). Request it when real publishing is implemented, so
-// connecting an account doesn't get blocked on a permission we don't use.
 export const META_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'pages_messaging',
   'pages_manage_engagement',
+  'pages_manage_posts',
   'instagram_basic',
   'instagram_content_publish',
   'instagram_manage_comments',
@@ -116,9 +113,6 @@ export async function fetchPagesWithInstagram(userAccessToken: string): Promise<
   return results;
 }
 
-// Requires the pages_manage_posts permission — not requested by default (see
-// META_SCOPES above), so this throws a clear Meta API permission error until
-// that's added to the connected account's grant.
 export async function publishPhotoToPage(pageId: string, pageAccessToken: string, imageUrl: string, caption: string): Promise<string> {
   const result = await graphPost(`/${pageId}/photos`, { url: imageUrl, caption, access_token: pageAccessToken });
   return result.post_id || result.id;
