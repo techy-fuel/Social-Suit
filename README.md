@@ -86,10 +86,19 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 
 Facebook Pages and Instagram Business accounts connect via a real Meta Graph
 API OAuth flow (`api/oauth.ts`, `api/_meta.ts`) — no other platform is wired
-up yet. Connecting stores a long-lived Page access token on that workspace's
-`connections` row. Post composer supports attaching one image or one video
-and either publishing it immediately ("Publish now") or leaving it saved
-for manual publish later from Planning calendar. There is **no cron/queue
+up yet. One OAuth grant connects **every** Page the authorizing user manages
+(plus each Page's linked Instagram account) as its own `connections` row,
+upserted by `platform_account_id` — so a workspace can have several Facebook
+Pages connected at once, not just one. The Connections page's "Connect a
+Facebook Page" button is the entry point both for the first connection and
+for adding more later (re-authorizing just re-syncs the full set Meta
+returns). Post composer lets you multi-select target accounts (any mix of
+connected Facebook Pages/Instagram accounts) and attach one image or one
+video, then either publish to all of them at once ("Publish now" — creates
+one `scheduled_posts` row per target, each tied to its `connection_id`, and
+publishes each independently so one failing doesn't block the rest) or leave
+them saved for manual publish later from Planning calendar. There is **no
+cron/queue
 publishing posts at their scheduled day/time** — `scheduled_date` + `hour`
 are stored, so the data model can support it, but nothing polls for due
 posts yet; add a Vercel Cron job (Hobby plan only runs cron once/day, so

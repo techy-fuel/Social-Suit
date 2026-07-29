@@ -73,21 +73,22 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
   if (!id) return badRequest(res, 'id is required');
 
   const rows = await sql`
-    SELECT sp.id, sp.platform, sp.caption, sp.media_url, sp.media_path, sp.media_type, sp.media_storage, sp.platform_post_id, sp.publish_status, w.id AS workspace_id
+    SELECT sp.id, sp.platform, sp.connection_id, sp.caption, sp.media_url, sp.media_path, sp.media_type, sp.media_storage, sp.platform_post_id, sp.publish_status, w.id AS workspace_id
     FROM scheduled_posts sp
     JOIN workspaces w ON w.id = sp.workspace_id
     WHERE sp.id = ${id} AND w.account_id = ${session.accountId}`;
   const post = rows[0];
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (!post.media_url) return badRequest(res, 'This post has no media attached — publishing requires an image or video for now.');
+  if (post.platform !== 'facebook' && post.platform !== 'instagram') {
+    return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
+  }
+  if (!post.connection_id) return badRequest(res, 'This post has no connected account attached.');
 
-  const label = post.platform === 'facebook' ? 'Facebook' : post.platform === 'instagram' ? 'Instagram' : null;
-  if (!label) return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
-
-  const conns = await sql`SELECT access_token, platform_account_id FROM connections WHERE workspace_id = ${post.workspace_id} AND platform = ${post.platform} AND label = ${label} AND status = 'connected'`;
+  const conns = await sql`SELECT access_token, platform_account_id FROM connections WHERE id = ${post.connection_id} AND workspace_id = ${post.workspace_id} AND status = 'connected'`;
   const conn = conns[0];
   if (!conn || !conn.access_token || !conn.platform_account_id) {
-    return badRequest(res, `Connect ${label} first (Connections page) before publishing to it.`);
+    return badRequest(res, `That account isn't connected anymore — reconnect it on the Connections page.`);
   }
 
   try {
@@ -153,20 +154,31 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
   const workspaceId = await getWorkspaceId(workspace, session.accountId);
 
   if (req.method === 'POST') {
-    const { day, hour, time, platform, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate } = req.body || {};
+    const { day, hour, time, platform, connectionId, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate } = req.body || {};
     if (day == null || hour == null || !time || !platform || !caption) {
       return badRequest(res, 'day, hour, time, platform, caption are required');
     }
+    if (connectionId != null) {
+      // Confirms the connection actually belongs to this workspace before
+      // tying a post to it — an id from another tenant's workspace must
+      // fail loudly here, not silently attach.
+      const owned = await sql`SELECT id FROM connections WHERE id = ${connectionId} AND workspace_id = ${workspaceId}`;
+      if (owned.length === 0) return badRequest(res, 'Unknown connection.');
+    }
     const postStatus = status === 'draft' ? 'draft' : 'scheduled';
     const rows = await sql`
-      INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, caption, status, media_url, media_path, media_type, media_storage, scheduled_date)
-      VALUES (${workspaceId}, ${day}, ${hour}, ${time}, ${platform}, ${caption}, ${postStatus}, ${mediaUrl || null}, ${mediaPath || null}, ${mediaType || null}, ${mediaStorage || null}, ${scheduledDate || null})
-      RETURNING id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", scheduled_date AS "scheduledDate", publish_status AS "publishStatus"`;
+      INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, connection_id, caption, status, media_url, media_path, media_type, media_storage, scheduled_date)
+      VALUES (${workspaceId}, ${day}, ${hour}, ${time}, ${platform}, ${connectionId || null}, ${caption}, ${postStatus}, ${mediaUrl || null}, ${mediaPath || null}, ${mediaType || null}, ${mediaStorage || null}, ${scheduledDate || null})
+      RETURNING id, day, hour, time_label AS time, platform, connection_id AS "connectionId", caption, status, media_url AS "mediaUrl", scheduled_date AS "scheduledDate", publish_status AS "publishStatus"`;
     return res.status(201).json(rows[0]);
   }
 
   const [posts, heat] = await Promise.all([
-    sql`SELECT id, day, hour, time_label AS time, platform, caption, status, media_url AS "mediaUrl", media_type AS "mediaType", scheduled_date AS "scheduledDate", publish_status AS "publishStatus", publish_error AS "publishError" FROM scheduled_posts WHERE workspace_id = ${workspaceId} ORDER BY COALESCE(scheduled_date, CURRENT_DATE), day, hour`,
+    sql`
+      SELECT sp.id, sp.day, sp.hour, sp.time_label AS time, sp.platform, sp.connection_id AS "connectionId", c.account AS "connectionAccount", sp.caption, sp.status, sp.media_url AS "mediaUrl", sp.media_type AS "mediaType", sp.scheduled_date AS "scheduledDate", sp.publish_status AS "publishStatus", sp.publish_error AS "publishError"
+      FROM scheduled_posts sp
+      LEFT JOIN connections c ON c.id = sp.connection_id
+      WHERE sp.workspace_id = ${workspaceId} ORDER BY COALESCE(sp.scheduled_date, CURRENT_DATE), sp.day, sp.hour`,
     sql`SELECT day, hour, value FROM heatmap_cells WHERE workspace_id = ${workspaceId}`,
   ]);
 

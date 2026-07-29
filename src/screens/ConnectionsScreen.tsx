@@ -67,13 +67,16 @@ export function ConnectionsScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>
-          Connections
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>
+            Connections
+          </div>
+          <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 2 }}>
+            Platforms available to {current!.name}
+          </div>
         </div>
-        <div style={{ fontFamily: 'var(--font-body)', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 2 }}>
-          Platforms available to {current!.name}
-        </div>
+        <Button size="sm" variant="secondary" onClick={connectWithMeta}>Connect a Facebook Page</Button>
       </div>
 
       {error && <div style={{ color: 'var(--red)', fontSize: 'var(--text-sm)' }}>Couldn't load connections: {error}</div>}
@@ -125,7 +128,7 @@ export function ConnectionsScreen() {
         }
       >
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
-          Disconnecting {managing?.label} stops scheduling and analytics from this platform until it's reconnected.
+          Disconnecting {managing?.label} stops scheduling and publishing to this account until it's reconnected.
         </div>
       </Dialog>
     </div>

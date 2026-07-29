@@ -112,6 +112,11 @@ export function CalendarScreen() {
               {data.scheduledPosts.map((p) => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 16px' }}>
                   <PlatformIcon platform={p.platform} />
+                  {p.connectionAccount && (
+                    <div style={{ width: 110, fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.connectionAccount}
+                    </div>
+                  )}
                   <div style={{ width: 92, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                     {formatScheduledDate(p.scheduledDate, p.day)} · {p.time}
                   </div>

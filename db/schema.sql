@@ -83,6 +83,25 @@ CREATE TABLE IF NOT EXISTS heatmap_cells (
   UNIQUE (workspace_id, day, hour)
 );
 
+CREATE TABLE IF NOT EXISTS connections (
+  id SERIAL PRIMARY KEY,
+  workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL,
+  label TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not-connected',
+  account TEXT,
+  sort_order INT NOT NULL DEFAULT 0,
+  -- Populated once a real OAuth connection (e.g. Meta) is completed. A
+  -- workspace can have several connected rows for the same platform (e.g.
+  -- multiple Facebook Pages) — platform_account_id is what's actually
+  -- unique per connected account, not platform+label.
+  access_token TEXT,
+  platform_account_id TEXT,
+  token_expires_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS connections_workspace_platform_account_idx
+  ON connections (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS scheduled_posts (
   id SERIAL PRIMARY KEY,
   workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -91,6 +110,9 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
   time_label TEXT NOT NULL,
   scheduled_date DATE,
   platform TEXT NOT NULL,
+  -- Which specific connected account (e.g. which of several Facebook Pages)
+  -- this post targets. Nullable: drafts/legacy rows may not have one yet.
+  connection_id INT REFERENCES connections(id) ON DELETE SET NULL,
   caption TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'scheduled',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -101,20 +123,6 @@ CREATE TABLE IF NOT EXISTS scheduled_posts (
   publish_status TEXT NOT NULL DEFAULT 'unpublished',
   platform_post_id TEXT,
   publish_error TEXT
-);
-
-CREATE TABLE IF NOT EXISTS connections (
-  id SERIAL PRIMARY KEY,
-  workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  platform TEXT NOT NULL,
-  label TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'not-connected',
-  account TEXT,
-  sort_order INT NOT NULL DEFAULT 0,
-  -- Populated once a real OAuth connection (e.g. Meta) is completed.
-  access_token TEXT,
-  platform_account_id TEXT,
-  token_expires_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS conversations (

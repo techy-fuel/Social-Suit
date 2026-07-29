@@ -6,12 +6,12 @@ import { Radio } from '../components/forms/Radio';
 import { Textarea } from '../components/forms/Textarea';
 import { Select } from '../components/forms/Select';
 import { Input } from '../components/forms/Input';
-import { PlatformIcon, Platform } from '../components/data/PlatformIcon';
+import { PlatformIcon } from '../components/data/PlatformIcon';
 import { useWorkspaces } from '../WorkspaceContext';
 import { useToast } from '../ToastContext';
+import { useApi } from '../hooks';
 import { api } from '../api';
 
-const platforms: Platform[] = ['facebook', 'instagram', 'tiktok'];
 const hourOptions = Array.from({ length: 24 }, (_, i) => i);
 
 function formatHour(h: number): string {
@@ -46,7 +46,7 @@ function readFileAsBase64(file: File): Promise<string> {
 
 interface ComposerDraft {
   postType: 'post' | 'reel' | 'story';
-  platform: Platform;
+  connectionIds: number[];
   caption: string;
   date: string;
   hour: string;
@@ -72,8 +72,11 @@ function loadDraft(workspaceKey: string): ComposerDraft | null {
 export function ComposerScreen() {
   const { current } = useWorkspaces();
   const { showToast } = useToast();
+  const { data: connections } = useApi(() => api.connections(current!.key), [current?.key]);
+  const connectedAccounts = (connections || []).filter((c) => c.status === 'connected');
+
   const [postType, setPostType] = React.useState<'post' | 'reel' | 'story'>('post');
-  const [platform, setPlatform] = React.useState<Platform>('instagram');
+  const [connectionIds, setConnectionIds] = React.useState<number[]>([]);
   const [preview, setPreview] = React.useState<'mobile' | 'desktop'>('mobile');
   const [caption, setCaption] = React.useState('');
   const [date, setDate] = React.useState(tomorrowIso());
@@ -100,7 +103,7 @@ export function ComposerScreen() {
     const draft = loadDraft(current.key);
     if (!draft) return;
     setPostType(draft.postType);
-    setPlatform(draft.platform);
+    setConnectionIds(draft.connectionIds || []);
     setCaption(draft.caption);
     setDate(draft.date);
     setHour(draft.hour);
@@ -112,13 +115,17 @@ export function ComposerScreen() {
 
   React.useEffect(() => {
     if (!current || loadedWorkspaceKey.current !== current.key) return;
-    const draft: ComposerDraft = { postType, platform, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
+    const draft: ComposerDraft = { postType, connectionIds, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage };
     try {
       localStorage.setItem(draftKey(current.key), JSON.stringify(draft));
     } catch {
       // Storage full/unavailable — losing autosave isn't worth surfacing an error for.
     }
-  }, [current, postType, platform, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
+  }, [current, postType, connectionIds, caption, date, hour, mediaUrl, mediaPath, mediaType, mediaStorage]);
+
+  function toggleConnection(id: number) {
+    setConnectionIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -168,16 +175,19 @@ export function ComposerScreen() {
   }
 
   async function submitPost(status: 'scheduled' | 'draft') {
-    if (!current || over || !caption.trim()) return;
+    if (!current || over || !caption.trim() || connectionIds.length === 0) return;
     const setBusy = status === 'draft' ? setSavingDraft : setSubmitting;
     setBusy(true);
     try {
       const h = Number(hour);
       const time = formatHour(h);
-      await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+      const targets = connectedAccounts.filter((c) => connectionIds.includes(c.id));
+      await Promise.all(targets.map((t) =>
+        api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: t.platform, connectionId: t.id, caption, status, mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date })
+      ));
       showToast({
         tone: 'positive',
-        title: status === 'draft' ? 'Draft saved' : 'Post scheduled',
+        title: status === 'draft' ? 'Draft saved' : `Scheduled to ${targets.length} account${targets.length === 1 ? '' : 's'}`,
         description: `${formatDate(date)} · ${time} — check Planning calendar.`,
       });
       resetForm();
@@ -189,17 +199,33 @@ export function ComposerScreen() {
   }
 
   async function publishNow() {
-    if (!current || over || !caption.trim() || !mediaUrl) return;
+    if (!current || over || !caption.trim() || !mediaUrl || connectionIds.length === 0) return;
     setPublishingNow(true);
     try {
       const h = Number(hour);
       const time = formatHour(h);
-      const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform, caption, status: 'scheduled', mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
-      const result = await api.publishScheduledPost(created.id);
-      if (result.processing) {
-        showToast({ tone: 'neutral', title: 'Still processing', description: 'Instagram is processing the video — check Planning calendar shortly and hit Publish now there.' });
+      const targets = connectedAccounts.filter((c) => connectionIds.includes(c.id));
+
+      const outcomes = await Promise.allSettled(targets.map(async (t) => {
+        const created = await api.scheduleCalendarPost(current.key, { day: isoDateToDayIndex(date), hour: h, time, platform: t.platform, connectionId: t.id, caption, status: 'scheduled', mediaUrl, mediaPath, mediaType, mediaStorage, scheduledDate: date });
+        const result = await api.publishScheduledPost(created.id);
+        return { target: t, processing: !!result.processing };
+      }));
+
+      const published = outcomes.filter((o) => o.status === 'fulfilled' && !o.value.processing).length;
+      const processing = outcomes.filter((o) => o.status === 'fulfilled' && o.value.processing).length;
+      const failed = outcomes.filter((o): o is PromiseRejectedResult => o.status === 'rejected');
+
+      if (failed.length === 0 && processing === 0) {
+        showToast({ tone: 'positive', title: 'Published', description: `Live on ${published} account${published === 1 ? '' : 's'}.` });
+      } else if (failed.length === 0) {
+        showToast({ tone: 'neutral', title: 'Mostly done', description: `${published} published, ${processing} still processing (Instagram video) — check Planning calendar.` });
       } else {
-        showToast({ tone: 'positive', title: 'Published', description: `Live on ${platform}.` });
+        showToast({
+          tone: 'error',
+          title: `${published + processing}/${targets.length} succeeded`,
+          description: failed.map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason))).join(' · '),
+        });
       }
       resetForm();
     } catch (err) {
@@ -229,39 +255,47 @@ export function ComposerScreen() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'var(--text-2xl)', color: 'var(--text)' }}>New post</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || savingDraft} onClick={() => submitPost('draft')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || connectionIds.length === 0 || savingDraft} onClick={() => submitPost('draft')}>
               {savingDraft ? 'Saving…' : 'Save as draft'}
             </Button>
-            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || submitting} onClick={() => submitPost('scheduled')}>
+            <Button variant="secondary" size="sm" disabled={over || !caption.trim() || connectionIds.length === 0 || submitting} onClick={() => submitPost('scheduled')}>
               {submitting ? 'Scheduling…' : 'Schedule'}
             </Button>
-            <span title={!caption.trim() ? 'Write a caption above first.' : !mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
-              <Button size="sm" disabled={over || !caption.trim() || publishingNow || !mediaUrl} onClick={publishNow}>
-                {publishingNow ? 'Publishing…' : 'Publish now'}
+            <span title={!caption.trim() ? 'Write a caption above first.' : connectionIds.length === 0 ? 'Select at least one connected account above.' : !mediaUrl ? 'Add an image or video above — publishing requires media right now.' : undefined}>
+              <Button size="sm" disabled={over || !caption.trim() || connectionIds.length === 0 || publishingNow || !mediaUrl} onClick={publishNow}>
+                {publishingNow ? 'Publishing…' : `Publish now${connectionIds.length > 1 ? ` (${connectionIds.length})` : ''}`}
               </Button>
             </span>
           </div>
         </div>
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>
-          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Platform</div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {platforms.map((p) => (
-              <button
-                key={p}
-                onClick={() => setPlatform(p)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                  border: `1.5px solid ${platform === p ? 'var(--accent-primary)' : 'var(--border)'}`,
-                  background: platform === p ? 'var(--blue-50)' : 'var(--card)',
-                }}
-              >
-                <PlatformIcon platform={p} size={16} />
-                <span style={{ fontSize: 'var(--text-xs)', textTransform: 'capitalize', color: 'var(--text)' }}>{p}</span>
-              </button>
-            ))}
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>
+            Accounts {connectionIds.length > 0 && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({connectionIds.length} selected)</span>}
           </div>
+          {connectedAccounts.length === 0 ? (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              No connected accounts yet — connect Facebook or Instagram pages from the Connections page first.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {connectedAccounts.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => toggleConnection(c.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                    border: `1.5px solid ${connectionIds.includes(c.id) ? 'var(--accent-primary)' : 'var(--border)'}`,
+                    background: connectionIds.includes(c.id) ? 'var(--blue-50)' : 'var(--card)',
+                  }}
+                >
+                  <PlatformIcon platform={c.platform} size={16} />
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text)' }}>{c.account || c.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xs)', padding: 18 }}>

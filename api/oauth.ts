@@ -62,21 +62,31 @@ async function metaCallback(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // Simplification for v1: connect the first Page returned. Most agency
-    // workspaces manage one client Page at a time; multi-Page picker is a
-    // follow-up if it turns out to be needed.
-    const page = pages[0];
-    await sql`
-      UPDATE connections SET status = 'connected', account = ${page.name}, access_token = ${page.access_token}, platform_account_id = ${page.id}
-      WHERE workspace_id = ${workspaceId} AND platform = 'facebook' AND label = 'Facebook'`;
-
-    if (page.instagram) {
+    // Connect every Page the user granted access to (not just the first) —
+    // agencies commonly manage several client Pages from one Facebook
+    // login. Each becomes its own connection row, upserted by
+    // platform_account_id so reconnecting refreshes tokens instead of
+    // duplicating rows.
+    let igCount = 0;
+    for (const [i, page] of pages.entries()) {
+      const sortBase = 1000 + i * 2; // keeps real connections after the seeded placeholder catalog rows
       await sql`
-        UPDATE connections SET status = 'connected', account = ${'@' + page.instagram.username}, access_token = ${page.access_token}, platform_account_id = ${page.instagram.id}
-        WHERE workspace_id = ${workspaceId} AND platform = 'instagram' AND label = 'Instagram'`;
+        INSERT INTO connections (workspace_id, platform, label, status, account, access_token, platform_account_id, sort_order)
+        VALUES (${workspaceId}, 'facebook', ${page.name}, 'connected', ${page.name}, ${page.access_token}, ${page.id}, ${sortBase})
+        ON CONFLICT (workspace_id, platform_account_id) DO UPDATE SET
+          status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token`;
+
+      if (page.instagram) {
+        igCount++;
+        await sql`
+          INSERT INTO connections (workspace_id, platform, label, status, account, access_token, platform_account_id, sort_order)
+          VALUES (${workspaceId}, 'instagram', ${'@' + page.instagram.username}, 'connected', ${'@' + page.instagram.username}, ${page.access_token}, ${page.instagram.id}, ${sortBase + 1})
+          ON CONFLICT (workspace_id, platform_account_id) DO UPDATE SET
+            status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token`;
+      }
     }
 
-    res.redirect(302, `/connections?connected=facebook${page.instagram ? ',instagram' : ''}`);
+    res.redirect(302, `/connections?connected=${pages.length}%20Page${pages.length === 1 ? '' : 's'}${igCount ? `,${igCount}%20Instagram` : ''}`);
   } catch (err) {
     console.error('meta oauth callback error:', err);
     res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
