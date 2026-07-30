@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db.js';
 import { withAuth, Session } from './_auth.js';
 import { getSupabaseAdmin } from './_supabase.js';
-import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo } from './_meta.js';
-import { refreshGoogleAccessToken, uploadVideoToYouTube } from './_google.js';
+import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo, deleteFacebookPost } from './_meta.js';
+import { refreshGoogleAccessToken, uploadVideoToYouTube, deleteYouTubeVideo } from './_google.js';
 import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } from './_tiktok.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
 
@@ -185,13 +185,51 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
   if (req.method === 'DELETE') {
     const id = req.query.id;
     if (!id) return badRequest(res, 'id is required');
+
     const rows = await sql`
-      DELETE FROM scheduled_posts
-      WHERE id = ${id} AND workspace_id IN (SELECT id FROM workspaces WHERE account_id = ${session.accountId})
-      RETURNING id, media_path, media_storage`;
-    if (rows.length === 0) return res.status(404).json({ error: 'Post not found.' });
-    await deleteMedia(rows[0].media_path, rows[0].media_storage);
-    return res.status(200).json({ ok: true });
+      SELECT sp.id, sp.platform, sp.connection_id, sp.media_path, sp.media_storage, sp.platform_post_id, sp.publish_status
+      FROM scheduled_posts sp
+      JOIN workspaces w ON w.id = sp.workspace_id
+      WHERE sp.id = ${id} AND w.account_id = ${session.accountId}`;
+    const post = rows[0];
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+
+    // Deleting a scheduled_posts row only ever removed it from our own
+    // planner — if it was already published, the copy on the platform
+    // stayed live. Facebook and YouTube both support deleting via API;
+    // Instagram and TikTok don't expose that for third-party apps, so those
+    // are left alone (and reported back as "unsupported" so the UI can say
+    // so instead of implying it worked).
+    let platformResult: 'deleted' | 'unsupported' | 'failed' | 'skipped' = 'skipped';
+    let platformError: string | undefined;
+
+    if (post.publish_status === 'published' && post.platform_post_id && post.connection_id) {
+      if (post.platform === 'facebook' || post.platform === 'youtube') {
+        try {
+          const conns = await sql`SELECT access_token, refresh_token, token_expires_at FROM connections WHERE id = ${post.connection_id}`;
+          const conn = conns[0];
+          if (!conn || !conn.access_token) {
+            throw new Error("That account isn't connected anymore — removed here, but it may still be live on the platform.");
+          }
+          if (post.platform === 'facebook') {
+            await deleteFacebookPost(post.platform_post_id, conn.access_token);
+          } else {
+            const accessToken = await getValidYouTubeAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
+            await deleteYouTubeVideo(accessToken, post.platform_post_id);
+          }
+          platformResult = 'deleted';
+        } catch (err) {
+          platformResult = 'failed';
+          platformError = err instanceof Error ? err.message : String(err);
+        }
+      } else {
+        platformResult = 'unsupported';
+      }
+    }
+
+    await sql`DELETE FROM scheduled_posts WHERE id = ${id}`;
+    await deleteMedia(post.media_path, post.media_storage);
+    return res.status(200).json({ ok: true, platformResult, platformError });
   }
 
   if (req.method === 'POST' && action === 'upload-media') return uploadMedia(req, res, session);
@@ -219,13 +257,13 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
     const rows = await sql`
       INSERT INTO scheduled_posts (workspace_id, day, hour, time_label, platform, connection_id, caption, status, media_url, media_path, media_type, media_storage, scheduled_date)
       VALUES (${workspaceId}, ${day}, ${hour}, ${time}, ${platform}, ${connectionId || null}, ${caption}, ${postStatus}, ${mediaUrl || null}, ${mediaPath || null}, ${mediaType || null}, ${mediaStorage || null}, ${scheduledDate || null})
-      RETURNING id, day, hour, time_label AS time, platform, connection_id AS "connectionId", caption, status, media_url AS "mediaUrl", scheduled_date AS "scheduledDate", publish_status AS "publishStatus"`;
+      RETURNING id, day, hour, time_label AS time, platform, connection_id AS "connectionId", caption, status, media_url AS "mediaUrl", to_char(scheduled_date, 'YYYY-MM-DD') AS "scheduledDate", publish_status AS "publishStatus"`;
     return res.status(201).json(rows[0]);
   }
 
   const [posts, heat] = await Promise.all([
     sql`
-      SELECT sp.id, sp.day, sp.hour, sp.time_label AS time, sp.platform, sp.connection_id AS "connectionId", c.account AS "connectionAccount", sp.caption, sp.status, sp.media_url AS "mediaUrl", sp.media_type AS "mediaType", sp.scheduled_date AS "scheduledDate", sp.publish_status AS "publishStatus", sp.publish_error AS "publishError"
+      SELECT sp.id, sp.day, sp.hour, sp.time_label AS time, sp.platform, sp.connection_id AS "connectionId", c.account AS "connectionAccount", sp.caption, sp.status, sp.media_url AS "mediaUrl", sp.media_type AS "mediaType", to_char(sp.scheduled_date, 'YYYY-MM-DD') AS "scheduledDate", sp.publish_status AS "publishStatus", sp.publish_error AS "publishError"
       FROM scheduled_posts sp
       LEFT JOIN connections c ON c.id = sp.connection_id
       WHERE sp.workspace_id = ${workspaceId} ORDER BY COALESCE(sp.scheduled_date, CURRENT_DATE), sp.day, sp.hour`,

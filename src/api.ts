@@ -41,7 +41,8 @@ export const api = {
   scheduleCalendarPost: (workspace: string, post: { day: number; hour: number; time: string; platform: Platform; connectionId?: number | null; caption: string; status?: 'scheduled' | 'draft'; mediaUrl?: string | null; mediaPath?: string | null; mediaType?: string | null; mediaStorage?: string | null; scheduledDate?: string }) =>
     request<{ id: number }>(`calendar?workspace=${encodeURIComponent(workspace)}`, { method: 'POST', body: JSON.stringify(post) }),
 
-  deleteScheduledPost: (id: number) => request(`calendar?id=${id}`, { method: 'DELETE' }),
+  deleteScheduledPost: (id: number) =>
+    request<{ ok: true; platformResult: 'deleted' | 'unsupported' | 'failed' | 'skipped'; platformError?: string }>(`calendar?id=${id}`, { method: 'DELETE' }),
 
   uploadMedia: (workspace: string, file: { filename: string; contentType: string; dataBase64: string }) =>
     request<{ url: string; path: string; storage: string; mediaType: string }>(`calendar?action=upload-media`, { method: 'POST', body: JSON.stringify({ workspace, ...file }) }),

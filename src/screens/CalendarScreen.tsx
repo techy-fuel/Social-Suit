@@ -27,9 +27,16 @@ export function CalendarScreen() {
   const heatByCell = new Map<string, number>();
   data?.heatmap.forEach((h) => heatByCell.set(`${h.day}-${h.hour}`, h.value));
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: number, platform: string) {
     try {
-      await api.deleteScheduledPost(id);
+      const result = await api.deleteScheduledPost(id);
+      if (result.platformResult === 'deleted') {
+        showToast({ tone: 'positive', title: 'Deleted', description: `Removed here and on ${platform}.` });
+      } else if (result.platformResult === 'unsupported') {
+        showToast({ tone: 'neutral', title: 'Removed from planner', description: `${platform} doesn't support deleting posts via API — remove it there manually if needed.` });
+      } else if (result.platformResult === 'failed') {
+        showToast({ tone: 'error', title: 'Removed here, but not on the platform', description: result.platformError });
+      }
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't delete post", description: err instanceof Error ? err.message : String(err) });
@@ -144,7 +151,7 @@ export function CalendarScreen() {
                     size="sm"
                     icon={<Trash2 size={14} />}
                     label="Delete post"
-                    onClick={() => handleDelete(p.id)}
+                    onClick={() => handleDelete(p.id, p.platform[0].toUpperCase() + p.platform.slice(1))}
                   />
                 </div>
               ))}

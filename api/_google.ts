@@ -133,3 +133,14 @@ export async function uploadVideoToYouTube(accessToken: string, videoUrl: string
   if (!uploadRes.ok) throw new Error(`YouTube upload error: ${uploadBody.error?.message || uploadRes.statusText}`);
   return uploadBody.id;
 }
+
+export async function deleteYouTubeVideo(accessToken: string, videoId: string): Promise<void> {
+  const res = await fetch(`${YOUTUBE_API}/videos?id=${encodeURIComponent(videoId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`YouTube delete error: ${body.error?.message || res.statusText}`);
+  }
+}
