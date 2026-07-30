@@ -23,11 +23,17 @@ export function CalendarScreen() {
   const { data, loading, error, refetch } = useApi(() => api.calendar(key), [key]);
   const { showToast } = useToast();
   const [publishingId, setPublishingId] = React.useState<number | null>(null);
+  const deletingIds = React.useRef(new Set<number>());
 
   const heatByCell = new Map<string, number>();
   data?.heatmap.forEach((h) => heatByCell.set(`${h.day}-${h.hour}`, h.value));
 
   async function handleDelete(id: number, platform: string) {
+    // Guards against a double-click firing two DELETE requests for the same
+    // post — the second would otherwise land after the first already
+    // removed it and surface a confusing "Post not found".
+    if (deletingIds.current.has(id)) return;
+    deletingIds.current.add(id);
     try {
       const result = await api.deleteScheduledPost(id);
       if (result.platformResult === 'deleted') {
@@ -40,6 +46,8 @@ export function CalendarScreen() {
       refetch();
     } catch (err) {
       showToast({ tone: 'error', title: "Couldn't delete post", description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      deletingIds.current.delete(id);
     }
   }
 

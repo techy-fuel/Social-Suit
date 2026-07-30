@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql, getWorkspaceId, badRequest } from './_db.js';
 import { withAuth, Session } from './_auth.js';
 import { getSupabaseAdmin } from './_supabase.js';
-import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo, deleteFacebookPost } from './_meta.js';
+import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo } from './_meta.js';
 import { refreshGoogleAccessToken, uploadVideoToYouTube, deleteYouTubeVideo } from './_google.js';
 import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } from './_tiktok.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
@@ -196,27 +196,26 @@ async function handler(req: VercelRequest, res: VercelResponse, session: Session
 
     // Deleting a scheduled_posts row only ever removed it from our own
     // planner — if it was already published, the copy on the platform
-    // stayed live. Facebook and YouTube both support deleting via API;
-    // Instagram and TikTok don't expose that for third-party apps, so those
-    // are left alone (and reported back as "unsupported" so the UI can say
-    // so instead of implying it worked).
+    // stayed live. Only YouTube reliably supports deleting via API: Meta's
+    // Graph API rejects DELETE on Page photo/video posts with "Unsupported
+    // delete request" (subcode 33) regardless of permissions — a platform
+    // restriction, not something fixable here — and Instagram/TikTok don't
+    // expose deletion to third-party apps at all. Those are left alone and
+    // reported back as "unsupported" so the UI can say so instead of
+    // attempting (and always failing) or implying it worked.
     let platformResult: 'deleted' | 'unsupported' | 'failed' | 'skipped' = 'skipped';
     let platformError: string | undefined;
 
     if (post.publish_status === 'published' && post.platform_post_id && post.connection_id) {
-      if (post.platform === 'facebook' || post.platform === 'youtube') {
+      if (post.platform === 'youtube') {
         try {
           const conns = await sql`SELECT access_token, refresh_token, token_expires_at FROM connections WHERE id = ${post.connection_id}`;
           const conn = conns[0];
           if (!conn || !conn.access_token) {
             throw new Error("That account isn't connected anymore — removed here, but it may still be live on the platform.");
           }
-          if (post.platform === 'facebook') {
-            await deleteFacebookPost(post.platform_post_id, conn.access_token);
-          } else {
-            const accessToken = await getValidYouTubeAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
-            await deleteYouTubeVideo(accessToken, post.platform_post_id);
-          }
+          const accessToken = await getValidYouTubeAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
+          await deleteYouTubeVideo(accessToken, post.platform_post_id);
           platformResult = 'deleted';
         } catch (err) {
           platformResult = 'failed';

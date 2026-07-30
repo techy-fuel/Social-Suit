@@ -212,6 +212,7 @@ so replying to those only saves locally — same as before, no crash.
 - LinkedIn, Threads, X, and other platforms still just flip a status flag on Connections — no real integration.
 - TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
 - TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).
+- Deleting an already-published post only deletes it on the platform for YouTube. Meta's Graph API rejects DELETE on Page photo/video posts outright ("Unsupported delete request", subcode 33 — a platform restriction, not a permissions issue), and Instagram/TikTok don't expose deletion to third-party apps at all; for those three, deleting in-app only removes it from the planner and the published content stays live.
 - One user per account — no team invites/multiple users per tenant yet.
 - No billing/subscription system — every account has unlimited access.
 - No pagination — list endpoints (conversations, scheduled posts, etc.) return everything for a workspace in one call.

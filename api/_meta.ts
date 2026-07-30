@@ -194,13 +194,3 @@ export async function replyToFacebookComment(commentId: string, pageAccessToken:
 export async function replyToInstagramComment(commentId: string, pageAccessToken: string, text: string): Promise<void> {
   await graphPost(`/${commentId}/replies`, { message: text, access_token: pageAccessToken });
 }
-
-// Works for Page photos and videos alike — the Graph API deletes any object
-// node the same way, by id.
-export async function deleteFacebookPost(postId: string, pageAccessToken: string): Promise<void> {
-  const res = await fetch(`${GRAPH_BASE}/${postId}?access_token=${encodeURIComponent(pageAccessToken)}`, { method: 'DELETE' });
-  const body = await res.json();
-  if (!res.ok || body.error) {
-    throw new Error(describeGraphError(body, res.statusText));
-  }
-}
