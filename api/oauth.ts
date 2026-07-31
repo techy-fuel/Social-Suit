@@ -388,23 +388,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provider = String(req.query.provider || '');
   const action = String(req.query.action || '');
 
-  if (action === 'start') {
-    if (!PROVIDERS.includes(provider as Provider)) {
-      res.status(400).json({ error: 'Unknown OAuth provider.' });
+  try {
+    if (action === 'start') {
+      if (!PROVIDERS.includes(provider as Provider)) {
+        res.status(400).json({ error: 'Unknown OAuth provider.' });
+        return;
+      }
+      await oauthStart(req, res, provider as Provider);
       return;
     }
-    return oauthStart(req, res, provider as Provider);
-  }
 
-  // A bare callback (no ?provider=/&action=callback — TikTok's redirect URI
-  // can't carry query params) still has ?code=&state=; recover the provider
-  // from state instead of the URL in that case.
-  if (action === 'callback' || (req.query.code && req.query.state)) {
-    const resolvedProvider = (provider || parseState(req)?.provider) as Provider | undefined;
-    if (resolvedProvider && PROVIDERS.includes(resolvedProvider)) return CALLBACKS[resolvedProvider](req, res);
-    res.redirect(302, '/connections?oauth_error=invalid_state');
-    return;
-  }
+    // A bare callback (no ?provider=/&action=callback — TikTok's redirect
+    // URI can't carry query params) still has ?code=&state=; recover the
+    // provider from state instead of the URL in that case.
+    if (action === 'callback' || (req.query.code && req.query.state)) {
+      const resolvedProvider = (provider || parseState(req)?.provider) as Provider | undefined;
+      if (resolvedProvider && PROVIDERS.includes(resolvedProvider)) {
+        await CALLBACKS[resolvedProvider](req, res);
+        return;
+      }
+      res.redirect(302, '/connections?oauth_error=invalid_state');
+      return;
+    }
 
-  res.status(400).json({ error: 'Unknown OAuth action.' });
+    res.status(400).json({ error: 'Unknown OAuth action.' });
+  } catch (err) {
+    // A missing env var (e.g. a provider's client secret not set yet) or
+    // any other unexpected throw during oauthStart() would otherwise crash
+    // this function outright (Vercel's raw 500 page) instead of showing a
+    // readable message — every callback already catches its own errors,
+    // but oauthStart() itself didn't have a safety net until now.
+    console.error('oauth handler error:', err);
+    if (!res.headersSent) {
+      res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
+    }
+  }
 }
