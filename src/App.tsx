@@ -186,7 +186,7 @@ function AppShell() {
               <span className="ss-hamburger">
                 <IconButton icon={<Menu size={16} />} label="Open menu" onClick={() => setSidebarOpen((o) => !o)} />
               </span>
-              <Tooltip label="Notifications">
+              <Tooltip label="Notifications" side="bottom">
                 <IconButton icon={<Bell size={16} />} label="Notifications" />
               </Tooltip>
               <Tooltip label="Log out" side="left">
