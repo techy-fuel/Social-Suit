@@ -189,7 +189,7 @@ function AppShell() {
               <Tooltip label="Notifications" side="bottom">
                 <IconButton icon={<Bell size={16} />} label="Notifications" />
               </Tooltip>
-              <Tooltip label="Log out" side="left">
+              <Tooltip label="Log out" side="bottom">
                 <IconButton icon={<LogOut size={16} />} label="Log out" onClick={() => logout()} />
               </Tooltip>
             </>
