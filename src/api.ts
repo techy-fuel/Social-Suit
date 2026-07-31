@@ -100,4 +100,12 @@ export const api = {
     request(`tracker`, { method: 'POST', body: JSON.stringify({ workspace, hashtag, platform, duration }) }),
 
   deleteTrackerSession: (id: number) => request(`tracker?id=${id}`, { method: 'DELETE' }),
+
+  notifications: (workspace: string) => request<{
+    notifications: { id: number; type: string; title: string; description: string | null; read: boolean; createdAt: string }[];
+    unreadCount: number;
+  }>(`workspaces?action=notifications&workspace=${encodeURIComponent(workspace)}`),
+
+  markNotificationRead: (workspace: string, id?: number) =>
+    request(`workspaces?action=notifications-read`, { method: 'POST', body: JSON.stringify({ workspace, id }) }),
 };

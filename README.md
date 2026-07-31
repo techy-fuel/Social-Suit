@@ -207,6 +207,21 @@ fails the reply still saves locally but the response includes a
 Conversations seeded before this feature (demo data) have no `sender_id`,
 so replying to those only saves locally — same as before, no crash.
 
+## Notifications
+
+The bell icon in the top bar is a real per-workspace notification feed
+(`notifications` table, written via `notify()` in `api/_notify.ts`), not a
+placeholder. Three things write to it: `api/calendar.ts` on every publish
+attempt (`publish_success` / `publish_failed`, or `connection_issue`
+specifically when the failure looks auth-related — see the regex in
+`publishPost()`), and `api/webhooks.ts` on every inbound DM/comment
+(`new_message` / `new_comment`). `notify()` swallows its own errors so a
+failed notification write never breaks the operation it's reporting on.
+Read via `?action=notifications` and `?action=notifications-read` on
+`api/workspaces.ts` (not a new function — already at the Hobby plan's
+12-function cap). No push/realtime: the frontend polls every 60s
+(`App.tsx`) rather than the backend pushing anything.
+
 ## Known gaps
 
 - LinkedIn, Threads, X, and other platforms still just flip a status flag on Connections — no real integration.

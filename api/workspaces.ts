@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql, badRequest } from './_db.js';
+import { sql, badRequest, getWorkspaceId } from './_db.js';
 import { withAuth, Session } from './_auth.js';
 
 function slugify(name: string): string {
@@ -35,7 +35,35 @@ const DEFAULT_PLATFORMS: Array<{ platform: string; label: string }> = [
   { platform: 'tiktok', label: 'TikTok Ads' },
 ];
 
+async function listNotifications(req: VercelRequest, res: VercelResponse, session: Session) {
+  const workspace = String(req.query.workspace || '');
+  if (!workspace) return badRequest(res, 'workspace is required');
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
+  const rows = await sql`
+    SELECT id, type, title, description, read, created_at AS "createdAt"
+    FROM notifications WHERE workspace_id = ${workspaceId}
+    ORDER BY created_at DESC LIMIT 50`;
+  const unreadCount = rows.filter((r: any) => !r.read).length;
+  res.status(200).json({ notifications: rows, unreadCount });
+}
+
+async function markNotificationsRead(req: VercelRequest, res: VercelResponse, session: Session) {
+  const { workspace, id } = req.body || {};
+  if (!workspace) return badRequest(res, 'workspace is required');
+  const workspaceId = await getWorkspaceId(workspace, session.accountId);
+  if (id != null) {
+    await sql`UPDATE notifications SET read = true WHERE id = ${id} AND workspace_id = ${workspaceId}`;
+  } else {
+    await sql`UPDATE notifications SET read = true WHERE workspace_id = ${workspaceId} AND read = false`;
+  }
+  res.status(200).json({ ok: true });
+}
+
 async function handler(req: VercelRequest, res: VercelResponse, session: Session) {
+  const action = String(req.query.action || '');
+  if (req.method === 'GET' && action === 'notifications') return listNotifications(req, res, session);
+  if (req.method === 'POST' && action === 'notifications-read') return markNotificationsRead(req, res, session);
+
   if (req.method === 'DELETE') {
     const key = String(req.query.key || '');
     if (!key) return badRequest(res, 'key is required');

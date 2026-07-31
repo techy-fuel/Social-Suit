@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from './_db.js';
+import { notify } from './_notify.js';
 
 // Meta calls this exact URL (as registered in the app's Webhooks product)
 // with no session/cookie — authenticity is a shared secret baked into the
@@ -51,6 +52,7 @@ async function handlePageEntry(entry: any) {
     await upsertConversation(conn.workspaceId, `dm:${senderId}`, {
       platform: conn.platform, name, preview: text, senderId, kind: 'dm',
     });
+    await notify(conn.workspaceId, 'new_message', `New message from ${name}`, text);
   }
 
   for (const change of entry.changes || []) {
@@ -64,6 +66,7 @@ async function handlePageEntry(entry: any) {
     await upsertConversation(conn.workspaceId, `comment:${commentId}`, {
       platform: conn.platform, name, preview: text, senderId: commentId, kind: 'comment',
     });
+    await notify(conn.workspaceId, 'new_comment', `New comment from ${name}`, text);
   }
 }
 

@@ -6,6 +6,7 @@ import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publis
 import { refreshGoogleAccessToken, uploadVideoToYouTube, deleteYouTubeVideo } from './_google.js';
 import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } from './_tiktok.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
+import { notify } from './_notify.js';
 
 const MEDIA_BUCKET = 'post-media';
 
@@ -171,10 +172,26 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
     // keeping every published file around indefinitely.
     await deleteMedia(post.media_path, post.media_storage);
 
+    const platformLabel = post.platform[0].toUpperCase() + post.platform.slice(1);
+    await notify(post.workspace_id, 'publish_success', 'Post published', `Your ${platformLabel} post went live.`);
+
     res.status(200).json({ ok: true, platformPostId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await sql`UPDATE scheduled_posts SET publish_status = 'failed', publish_error = ${message} WHERE id = ${id}`;
+
+    // A token/auth failure means the connection itself needs attention, not
+    // just this one post — worth flagging distinctly from an ordinary
+    // publish failure (bad file, platform rejection, etc).
+    const isAuthIssue = /reconnect it on the Connections page|OAuthException|Error validating access token|Session has expired|invalid_grant/i.test(message);
+    const platformLabel = post.platform[0].toUpperCase() + post.platform.slice(1);
+    await notify(
+      post.workspace_id,
+      isAuthIssue ? 'connection_issue' : 'publish_failed',
+      isAuthIssue ? `${platformLabel} connection needs attention` : 'Post failed to publish',
+      message
+    );
+
     res.status(502).json({ error: message });
   }
 }

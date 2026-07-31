@@ -12,6 +12,8 @@ import { Button } from './components/core/Button';
 import { EmptyState } from './components/feedback/EmptyState';
 import { useWorkspaces } from './WorkspaceContext';
 import { useAuth } from './AuthContext';
+import { useApi } from './hooks';
+import { api } from './api';
 import { AuthGate } from './screens/AuthGate';
 import { TermsScreen } from './screens/TermsScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
@@ -27,6 +29,25 @@ import { AdsScreen } from './screens/AdsScreen';
 import { ReportingScreen } from './screens/ReportingScreen';
 import { TrackerScreen } from './screens/TrackerScreen';
 import { ConnectionsScreen } from './screens/ConnectionsScreen';
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+const notifTone: Record<string, string> = {
+  publish_success: 'var(--positive-bg)',
+  publish_failed: 'var(--red-bg)',
+  connection_issue: 'var(--red-bg)',
+  new_message: 'var(--blue-100)',
+  new_comment: 'var(--blue-100)',
+};
 
 const titles: Record<SidebarScreen, string> = {
   analytics: 'Page overview',
@@ -112,11 +133,17 @@ function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [wsOpen, setWsOpen] = React.useState(false);
+  const [notifOpen, setNotifOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [removing, setRemoving] = React.useState<{ key: string; name: string } | null>(null);
   const [removeBusy, setRemoveBusy] = React.useState(false);
   const { workspaces, current, index, setIndex, loading, error, deleteWorkspace } = useWorkspaces();
+  const wsKey = current?.key || null;
+  const { data: notifData, refetch: refetchNotifs } = useApi(
+    () => (wsKey ? api.notifications(wsKey) : Promise.resolve({ notifications: [], unreadCount: 0 })),
+    [wsKey]
+  );
 
   async function confirmRemove() {
     if (!removing) return;
@@ -129,9 +156,22 @@ function AppShell() {
     }
   }
 
+  async function markNotifRead(id?: number) {
+    if (!wsKey) return;
+    await api.markNotificationRead(wsKey, id);
+    refetchNotifs();
+  }
+
   React.useEffect(() => {
     if (location.pathname === '/') navigate('/analytics', { replace: true });
   }, [location.pathname, navigate]);
+
+  // No push notifications — poll occasionally so the unread count stays
+  // roughly current without the user having to open the dropdown.
+  React.useEffect(() => {
+    const interval = setInterval(() => refetchNotifs(), 60_000);
+    return () => clearInterval(interval);
+  }, [refetchNotifs]);
 
   if (loading) {
     return (
@@ -186,9 +226,72 @@ function AppShell() {
               <span className="ss-hamburger">
                 <IconButton icon={<Menu size={16} />} label="Open menu" onClick={() => setSidebarOpen((o) => !o)} />
               </span>
-              <Tooltip label="Notifications" side="bottom">
-                <IconButton icon={<Bell size={16} />} label="Notifications" />
-              </Tooltip>
+              <div style={{ position: 'relative' }}>
+                <Tooltip label="Notifications" side="bottom">
+                  <span style={{ position: 'relative', display: 'inline-flex' }}>
+                    <IconButton icon={<Bell size={16} />} label="Notifications" onClick={() => setNotifOpen((o) => !o)} />
+                    {!!notifData?.unreadCount && (
+                      <span
+                        style={{
+                          position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, padding: '0 3px',
+                          borderRadius: 'var(--radius-full)', background: 'var(--red)', color: '#fff',
+                          fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: 'var(--font-body)', border: '2px solid var(--card)',
+                        }}
+                      >
+                        {notifData.unreadCount > 9 ? '9+' : notifData.unreadCount}
+                      </span>
+                    )}
+                  </span>
+                </Tooltip>
+                {notifOpen && (
+                  <div
+                    style={{
+                      position: 'absolute', right: 0, top: '110%', width: 320, maxHeight: 400, overflowY: 'auto',
+                      background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                      boxShadow: 'var(--shadow-md)', zIndex: 30,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Notifications</span>
+                      {!!notifData?.unreadCount && (
+                        <button
+                          onClick={() => markNotifRead()}
+                          style={{ border: 'none', background: 'transparent', color: 'var(--accent-primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', padding: 0 }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    {(!notifData || notifData.notifications.length === 0) && (
+                      <div style={{ padding: '20px 14px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textAlign: 'center' }}>
+                        Nothing yet.
+                      </div>
+                    )}
+                    {notifData?.notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => !n.read && markNotifRead(n.id)}
+                        style={{
+                          display: 'flex', gap: 8, width: '100%', textAlign: 'left', padding: '10px 14px',
+                          border: 'none', borderBottom: '1px solid var(--border)', cursor: n.read ? 'default' : 'pointer',
+                          background: n.read ? 'transparent' : (notifTone[n.type] || 'var(--surface-sunken)'),
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)' }}>{n.title}</div>
+                          {n.description && (
+                            <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                              {n.description}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-muted)', marginTop: 4 }}>{formatRelativeTime(n.createdAt)}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Tooltip label="Log out" side="bottom">
                 <IconButton icon={<LogOut size={16} />} label="Log out" onClick={() => logout()} />
               </Tooltip>
