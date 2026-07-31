@@ -5,9 +5,21 @@ import { metaAuthorizeUrl, exchangeCodeForUserToken, fetchPagesWithInstagram } f
 import { googleAuthorizeUrl, exchangeGoogleCode, fetchYouTubeChannel } from './_google.js';
 import { tiktokAuthorizeUrl, exchangeTikTokCode, fetchTikTokCreatorInfo } from './_tiktok.js';
 import { linkedinAuthorizeUrl, exchangeLinkedInCode, fetchLinkedInProfile } from './_linkedin.js';
+import { threadsAuthorizeUrl, exchangeThreadsCode, fetchThreadsProfile } from './_threads.js';
 
 // Consolidated (?provider=&action=) so adding more platforms doesn't cost
 // another top-level file against Vercel's 12-function cap.
+
+type Provider = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'threads';
+const PROVIDERS: Provider[] = ['meta', 'google', 'tiktok', 'linkedin', 'threads'];
+
+const AUTHORIZE_URL: Record<Provider, (redirectUri: string, state: string) => string> = {
+  meta: metaAuthorizeUrl,
+  google: googleAuthorizeUrl,
+  tiktok: tiktokAuthorizeUrl,
+  linkedin: linkedinAuthorizeUrl,
+  threads: threadsAuthorizeUrl,
+};
 
 function redirectUri(req: VercelRequest, provider: string): string {
   const siteUrl = process.env.PUBLIC_SITE_URL || `https://${req.headers.host}`;
@@ -18,7 +30,7 @@ function redirectUri(req: VercelRequest, provider: string): string {
   return `${siteUrl}/api/oauth?provider=${provider}&action=callback`;
 }
 
-async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'meta' | 'google' | 'tiktok' | 'linkedin') {
+async function oauthStart(req: VercelRequest, res: VercelResponse, provider: Provider) {
   const session = getSession(req);
   if (!session) {
     res.redirect(302, '/');
@@ -37,14 +49,7 @@ async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'me
   // provider travels inside the signed state too — TikTok's callback has no
   // ?provider= query param to read it back from (see redirectUri() above).
   const state = signState({ accountId: session.accountId, workspace, provider, exp: Date.now() + 10 * 60 * 1000 });
-  const url = provider === 'meta'
-    ? metaAuthorizeUrl(redirectUri(req, provider), state)
-    : provider === 'google'
-    ? googleAuthorizeUrl(redirectUri(req, provider), state)
-    : provider === 'tiktok'
-    ? tiktokAuthorizeUrl(redirectUri(req, provider), state)
-    : linkedinAuthorizeUrl(redirectUri(req, provider), state);
-  res.redirect(302, url);
+  res.redirect(302, AUTHORIZE_URL[provider](redirectUri(req, provider), state));
 }
 
 function parseState(req: VercelRequest): { accountId: number; workspace: string; provider: string; exp: number } | null {
@@ -231,27 +236,67 @@ async function linkedinCallback(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function threadsCallback(req: VercelRequest, res: VercelResponse) {
+  const state = parseState(req);
+  if (!state) {
+    res.redirect(302, '/connections?oauth_error=invalid_state');
+    return;
+  }
+  if (req.query.error) {
+    res.redirect(302, '/connections?oauth_error=denied');
+    return;
+  }
+  const code = String(req.query.code || '');
+  if (!code) {
+    res.redirect(302, '/connections?oauth_error=missing_code');
+    return;
+  }
+
+  try {
+    const workspaceId = await getWorkspaceId(state.workspace, state.accountId);
+    const tokens = await exchangeThreadsCode(code, redirectUri(req, 'threads'));
+    const profile = await fetchThreadsProfile(tokens.accessToken);
+
+    await sql`
+      INSERT INTO connections (workspace_id, platform, label, status, account, access_token, platform_account_id, token_expires_at, sort_order)
+      VALUES (${workspaceId}, 'threads', ${'@' + profile.username}, 'connected', ${'@' + profile.username}, ${tokens.accessToken}, ${tokens.userId}, ${tokens.expiresAt.toISOString()}, 5000)
+      ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
+        status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token,
+        token_expires_at = EXCLUDED.token_expires_at`;
+
+    res.redirect(302, `/connections?connected=Threads`);
+  } catch (err) {
+    console.error('threads oauth callback error:', err);
+    res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
+  }
+}
+
+const CALLBACKS: Record<Provider, (req: VercelRequest, res: VercelResponse) => Promise<void>> = {
+  meta: metaCallback,
+  google: googleCallback,
+  tiktok: tiktokCallback,
+  linkedin: linkedinCallback,
+  threads: threadsCallback,
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provider = String(req.query.provider || '');
   const action = String(req.query.action || '');
 
   if (action === 'start') {
-    if (provider !== 'meta' && provider !== 'google' && provider !== 'tiktok' && provider !== 'linkedin') {
+    if (!PROVIDERS.includes(provider as Provider)) {
       res.status(400).json({ error: 'Unknown OAuth provider.' });
       return;
     }
-    return oauthStart(req, res, provider);
+    return oauthStart(req, res, provider as Provider);
   }
 
   // A bare callback (no ?provider=/&action=callback — TikTok's redirect URI
   // can't carry query params) still has ?code=&state=; recover the provider
   // from state instead of the URL in that case.
   if (action === 'callback' || (req.query.code && req.query.state)) {
-    const resolvedProvider = provider || parseState(req)?.provider;
-    if (resolvedProvider === 'meta') return metaCallback(req, res);
-    if (resolvedProvider === 'google') return googleCallback(req, res);
-    if (resolvedProvider === 'tiktok') return tiktokCallback(req, res);
-    if (resolvedProvider === 'linkedin') return linkedinCallback(req, res);
+    const resolvedProvider = (provider || parseState(req)?.provider) as Provider | undefined;
+    if (resolvedProvider && PROVIDERS.includes(resolvedProvider)) return CALLBACKS[resolvedProvider](req, res);
     res.redirect(302, '/connections?oauth_error=invalid_state');
     return;
   }

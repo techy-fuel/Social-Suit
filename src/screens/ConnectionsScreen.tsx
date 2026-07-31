@@ -9,12 +9,26 @@ import { useToast } from '../ToastContext';
 import { useApi } from '../hooks';
 import { api } from '../api';
 
-// These are wired to real OAuth flows (api/oauth.ts); everything else still
-// just flips a status flag until that platform's integration is built.
-const META_OAUTH_LABELS = new Set(['Facebook', 'Instagram']);
-const GOOGLE_OAUTH_LABELS = new Set(['YouTube']);
-const TIKTOK_OAUTH_LABELS = new Set(['TikTok (personal)', 'TikTok (business)']);
-const LINKEDIN_OAUTH_LABELS = new Set(['LinkedIn']);
+// These are wired to real OAuth flows (api/oauth.ts, ?provider=<value>);
+// everything else still just flips a status flag until that platform's
+// integration is built.
+const OAUTH_LABEL_PROVIDER: Record<string, string> = {
+  Facebook: 'meta',
+  Instagram: 'meta',
+  YouTube: 'google',
+  'TikTok (personal)': 'tiktok',
+  'TikTok (business)': 'tiktok',
+  LinkedIn: 'linkedin',
+  Threads: 'threads',
+};
+
+const HEADER_CONNECT_BUTTONS: Array<{ provider: string; label: string }> = [
+  { provider: 'meta', label: 'Connect a Facebook Page' },
+  { provider: 'google', label: 'Connect YouTube' },
+  { provider: 'tiktok', label: 'Connect TikTok' },
+  { provider: 'linkedin', label: 'Connect LinkedIn' },
+  { provider: 'threads', label: 'Connect Threads' },
+];
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {
   connected: 'positive',
@@ -49,42 +63,17 @@ export function ConnectionsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function connectWithMeta() {
-    window.location.href = `/api/oauth?provider=meta&action=start&workspace=${encodeURIComponent(key)}`;
-  }
-
-  function connectWithGoogle() {
-    window.location.href = `/api/oauth?provider=google&action=start&workspace=${encodeURIComponent(key)}`;
-  }
-
-  function connectWithTikTok() {
-    window.location.href = `/api/oauth?provider=tiktok&action=start&workspace=${encodeURIComponent(key)}`;
-  }
-
-  function connectWithLinkedIn() {
-    window.location.href = `/api/oauth?provider=linkedin&action=start&workspace=${encodeURIComponent(key)}`;
+  function connectWith(provider: string) {
+    window.location.href = `/api/oauth?provider=${provider}&action=start&workspace=${encodeURIComponent(key)}`;
   }
 
   // true if this label has a real OAuth flow to hand off to (in which case
   // the caller shouldn't also fall back to the fake status-flag toggle).
   function connectFor(label: string): boolean {
-    if (META_OAUTH_LABELS.has(label)) {
-      connectWithMeta();
-      return true;
-    }
-    if (GOOGLE_OAUTH_LABELS.has(label)) {
-      connectWithGoogle();
-      return true;
-    }
-    if (TIKTOK_OAUTH_LABELS.has(label)) {
-      connectWithTikTok();
-      return true;
-    }
-    if (LINKEDIN_OAUTH_LABELS.has(label)) {
-      connectWithLinkedIn();
-      return true;
-    }
-    return false;
+    const provider = OAUTH_LABEL_PROVIDER[label];
+    if (!provider) return false;
+    connectWith(provider);
+    return true;
   }
 
   async function setStatus(id: number, status: string, label: string) {
@@ -112,11 +101,10 @@ export function ConnectionsScreen() {
             Platforms available to {current!.name}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button size="sm" variant="secondary" onClick={connectWithMeta}>Connect a Facebook Page</Button>
-          <Button size="sm" variant="secondary" onClick={connectWithGoogle}>Connect YouTube</Button>
-          <Button size="sm" variant="secondary" onClick={connectWithTikTok}>Connect TikTok</Button>
-          <Button size="sm" variant="secondary" onClick={connectWithLinkedIn}>Connect LinkedIn</Button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {HEADER_CONNECT_BUTTONS.map((b) => (
+            <Button key={b.provider} size="sm" variant="secondary" onClick={() => connectWith(b.provider)}>{b.label}</Button>
+          ))}
         </div>
       </div>
 

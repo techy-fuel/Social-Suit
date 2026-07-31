@@ -6,6 +6,7 @@ import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publis
 import { refreshGoogleAccessToken, uploadVideoToYouTube, deleteYouTubeVideo } from './_google.js';
 import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } from './_tiktok.js';
 import { refreshLinkedInAccessToken, publishToLinkedIn } from './_linkedin.js';
+import { refreshThreadsAccessToken, publishToThreads, finishThreadsPublish } from './_threads.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
 import { notify } from './_notify.js';
 
@@ -46,6 +47,18 @@ async function getValidLinkedInAccessToken(connId: number, accessToken: string, 
   if (!refreshToken) throw new Error("This LinkedIn connection can't refresh its token — reconnect it on the Connections page.");
   const refreshed = await refreshLinkedInAccessToken(refreshToken);
   await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, refresh_token = ${refreshed.refreshToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
+  return refreshed.accessToken;
+}
+
+// Threads has no separate refresh_token — the long-lived access token
+// itself gets extended in place, so there's nothing to fall back to if this
+// fails (unlike the others, which distinguish "no refresh token" from "the
+// refresh call failed"); either way it surfaces as a normal publish error.
+async function getValidThreadsAccessToken(connId: number, accessToken: string, expiresAt: string | null): Promise<string> {
+  const expiringSoon = !expiresAt || new Date(expiresAt).getTime() < Date.now() + 60_000;
+  if (!expiringSoon) return accessToken;
+  const refreshed = await refreshThreadsAccessToken(accessToken);
+  await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
   return refreshed.accessToken;
 }
 
@@ -122,7 +135,7 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
   const post = rows[0];
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (!post.media_url) return badRequest(res, 'This post has no media attached — publishing requires an image or video for now.');
-  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok' && post.platform !== 'linkedin') {
+  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok' && post.platform !== 'linkedin' && post.platform !== 'threads') {
     return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
   }
   if (post.platform === 'youtube' && post.media_type !== 'video') {
@@ -176,6 +189,20 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
     } else if (post.platform === 'linkedin') {
       const accessToken = await getValidLinkedInAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
       platformPostId = await publishToLinkedIn(accessToken, conn.platform_account_id, post.caption, post.media_url, post.media_type);
+    } else if (post.platform === 'threads') {
+      const accessToken = await getValidThreadsAccessToken(post.connection_id, conn.access_token, conn.token_expires_at);
+      // A previous attempt may have already created the container and timed
+      // out waiting for Threads to finish processing it — resume that
+      // instead of uploading again.
+      const result = post.publish_status === 'processing' && post.platform_post_id
+        ? await finishThreadsPublish(post.platform_post_id, conn.platform_account_id, accessToken)
+        : await publishToThreads(accessToken, conn.platform_account_id, post.caption, post.media_url, post.media_type);
+
+      if (result.status === 'processing') {
+        await sql`UPDATE scheduled_posts SET publish_status = 'processing', platform_post_id = ${result.containerId}, publish_error = NULL WHERE id = ${id}`;
+        return res.status(202).json({ ok: true, processing: true });
+      }
+      platformPostId = result.platformPostId;
     } else if (post.platform === 'facebook' && post.media_type === 'video') {
       platformPostId = await publishVideoToPage(conn.platform_account_id, conn.access_token, post.media_url, post.caption);
     } else if (post.platform === 'facebook') {

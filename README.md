@@ -82,13 +82,15 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta, YouTube, TikTok, LinkedIn)
+## Real platform integration (Meta, YouTube, TikTok, LinkedIn, Threads)
 
 `api/oauth.ts` is a single consolidated OAuth handler for every provider
-(`?provider=meta|google|tiktok&action=start|callback`) — deliberately not one
-file per provider, since Vercel's Hobby plan caps a deployment at 12
-serverless functions and this project is already at that cap. Add new
-platforms as another `provider` branch here, not a new top-level file.
+(`?provider=meta|google|tiktok|linkedin|threads&action=start|callback`) —
+deliberately not one file per provider, since Vercel's Hobby plan caps a
+deployment at 12 serverless functions and this project is already at that
+cap. Providers are registered in the `PROVIDERS` array and the
+`AUTHORIZE_URL`/`CALLBACKS` lookup tables at the top of the file — add a new
+platform there (plus its own callback function), not a new top-level file.
 
 ### Meta (Facebook Pages + Instagram)
 
@@ -189,6 +191,26 @@ constant — bump periodically) or LinkedIn rejects it outright.
 - The created post's id comes back in the `x-restli-id` **response header**,
   not the JSON body — a REST.li quirk specific to this API.
 
+### Threads
+
+Reuses the **same Meta App ID/Secret** as Facebook/Instagram (`api/_meta.ts`'s
+`META_APP_ID` + `META_APP_SECRET`) — Threads is just another "use case"
+added to that same Meta app in the dashboard, not a separate app or
+credentials (`api/_threads.ts`). OAuth happens on different hosts though
+(`threads.net`/`graph.threads.net`, not `facebook.com`/`graph.facebook.com`),
+and token exchange is a two-hop dance: short-lived token first, then
+exchanged again for a 60-day long-lived one (`th_exchange_token`). Unlike
+every other platform here, there's no separate refresh_token — the same
+long-lived access token gets extended in place via `th_refresh_token`, so
+`connections.refresh_token` stays `NULL` for Threads rows.
+
+Publishing is two-step like Instagram (create a container, poll its
+`status`, then publish it) since Threads is built on the same underlying
+Graph API infra — `publishToThreads()` reuses that same
+processing/resume shape (`PublishResult`) as Instagram/TikTok, so a video
+that outlasts one request's time budget resumes on the next "Publish now"
+instead of re-uploading.
+
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
 `post-media` (must be created manually, set **public**); videos (≤200MB) skip
@@ -250,7 +272,7 @@ Read via `?action=notifications` and `?action=notifications-read` on
 
 ## Known gaps
 
-- Threads, X, and other remaining platforms still just flip a status flag on Connections — no real integration.
+- X, Pinterest, and other remaining platforms still just flip a status flag on Connections — no real integration.
 - TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
 - LinkedIn posting only targets the connected member's personal profile — no company/organization Page posting (that needs a separate, harder-to-get scope: `w_organization_social`).
 - TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).
