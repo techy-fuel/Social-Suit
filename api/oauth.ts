@@ -6,12 +6,13 @@ import { googleAuthorizeUrl, exchangeGoogleCode, fetchYouTubeChannel } from './_
 import { tiktokAuthorizeUrl, exchangeTikTokCode, fetchTikTokCreatorInfo } from './_tiktok.js';
 import { linkedinAuthorizeUrl, exchangeLinkedInCode, fetchLinkedInProfile } from './_linkedin.js';
 import { threadsAuthorizeUrl, exchangeThreadsCode, fetchThreadsProfile } from './_threads.js';
+import { pinterestAuthorizeUrl, exchangePinterestCode, fetchPinterestBoards } from './_pinterest.js';
 
 // Consolidated (?provider=&action=) so adding more platforms doesn't cost
 // another top-level file against Vercel's 12-function cap.
 
-type Provider = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'threads';
-const PROVIDERS: Provider[] = ['meta', 'google', 'tiktok', 'linkedin', 'threads'];
+type Provider = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'threads' | 'pinterest';
+const PROVIDERS: Provider[] = ['meta', 'google', 'tiktok', 'linkedin', 'threads', 'pinterest'];
 
 const AUTHORIZE_URL: Record<Provider, (redirectUri: string, state: string) => string> = {
   meta: metaAuthorizeUrl,
@@ -19,6 +20,7 @@ const AUTHORIZE_URL: Record<Provider, (redirectUri: string, state: string) => st
   tiktok: tiktokAuthorizeUrl,
   linkedin: linkedinAuthorizeUrl,
   threads: threadsAuthorizeUrl,
+  pinterest: pinterestAuthorizeUrl,
 };
 
 function redirectUri(req: VercelRequest, provider: string): string {
@@ -271,12 +273,58 @@ async function threadsCallback(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function pinterestCallback(req: VercelRequest, res: VercelResponse) {
+  const state = parseState(req);
+  if (!state) {
+    res.redirect(302, '/connections?oauth_error=invalid_state');
+    return;
+  }
+  if (req.query.error) {
+    res.redirect(302, '/connections?oauth_error=denied');
+    return;
+  }
+  const code = String(req.query.code || '');
+  if (!code) {
+    res.redirect(302, '/connections?oauth_error=missing_code');
+    return;
+  }
+
+  try {
+    const workspaceId = await getWorkspaceId(state.workspace, state.accountId);
+    const tokens = await exchangePinterestCode(code, redirectUri(req, 'pinterest'));
+    const boards = await fetchPinterestBoards(tokens.accessToken);
+
+    if (boards.length === 0) {
+      res.redirect(302, '/connections?oauth_error=no_boards');
+      return;
+    }
+
+    // A Pin always targets one specific board, so — same reasoning as
+    // Facebook's multiple Pages — every board the user has becomes its own
+    // connection row (all sharing the same account-level access token).
+    for (const [i, board] of boards.entries()) {
+      await sql`
+        INSERT INTO connections (workspace_id, platform, label, status, account, access_token, refresh_token, platform_account_id, token_expires_at, sort_order)
+        VALUES (${workspaceId}, 'pinterest', ${board.name}, 'connected', ${board.name}, ${tokens.accessToken}, ${tokens.refreshToken}, ${board.id}, ${tokens.expiresAt.toISOString()}, ${6000 + i})
+        ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
+          status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token,
+          refresh_token = EXCLUDED.refresh_token, token_expires_at = EXCLUDED.token_expires_at`;
+    }
+
+    res.redirect(302, `/connections?connected=${boards.length}%20Pinterest%20board${boards.length === 1 ? '' : 's'}`);
+  } catch (err) {
+    console.error('pinterest oauth callback error:', err);
+    res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
+  }
+}
+
 const CALLBACKS: Record<Provider, (req: VercelRequest, res: VercelResponse) => Promise<void>> = {
   meta: metaCallback,
   google: googleCallback,
   tiktok: tiktokCallback,
   linkedin: linkedinCallback,
   threads: threadsCallback,
+  pinterest: pinterestCallback,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

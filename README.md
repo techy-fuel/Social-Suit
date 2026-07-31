@@ -82,11 +82,11 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta, YouTube, TikTok, LinkedIn, Threads)
+## Real platform integration (Meta, YouTube, TikTok, LinkedIn, Threads, Pinterest)
 
 `api/oauth.ts` is a single consolidated OAuth handler for every provider
-(`?provider=meta|google|tiktok|linkedin|threads&action=start|callback`) —
-deliberately not one file per provider, since Vercel's Hobby plan caps a
+(`?provider=meta|google|tiktok|linkedin|threads|pinterest&action=start|callback`)
+— deliberately not one file per provider, since Vercel's Hobby plan caps a
 deployment at 12 serverless functions and this project is already at that
 cap. Providers are registered in the `PROVIDERS` array and the
 `AUTHORIZE_URL`/`CALLBACKS` lookup tables at the top of the file — add a new
@@ -211,6 +211,34 @@ processing/resume shape (`PublishResult`) as Instagram/TikTok, so a video
 that outlasts one request's time budget resumes on the next "Publish now"
 instead of re-uploading.
 
+### Pinterest
+
+Connects via Pinterest API v5's OAuth (`api/_pinterest.ts`), scoped to
+`boards:read,pins:write,pins:read,user_accounts:read`. New apps get **Trial
+access** by default: Pins created are visible only to the creator until
+Pinterest approves an upgrade to Standard access (their own video-demo
+review process, same shape as TikTok's audit) — same "works now privately,
+goes public once approved, no code change needed" story as TikTok.
+
+- **A Pin always belongs to one board**, so — same reasoning as Facebook's
+  multiple Pages — connecting Pinterest fetches every board the account has
+  and creates one `connections` row per board (all sharing the same
+  account-level access/refresh token). The composer's account picker is
+  really a board picker for Pinterest.
+- **Video Pins aren't supported.** Pinterest requires a separate
+  `cover_image_url` (a still-frame thumbnail) for video Pins, and this app
+  has no video-thumbnail generation anywhere — sending the video URL itself
+  as the cover image fails outright. Only text/image Pins are implemented;
+  `publishPost()` in `api/calendar.ts` rejects video for this platform with
+  a clear message rather than attempting and failing.
+- Image Pins are simpler than every other platform here: `media_source` in
+  the Create Pin call just takes the image URL directly
+  (`source_type: 'image_url'`) — no separate upload step at all.
+- Access tokens last 30 days; refresh tokens **rotate on every refresh**
+  like TikTok's — the new one has to be persisted or the connection becomes
+  unrefreshable after the next refresh (`getValidPinterestAccessToken()` in
+  `api/calendar.ts`).
+
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
 `post-media` (must be created manually, set **public**); videos (≤200MB) skip
@@ -272,7 +300,9 @@ Read via `?action=notifications` and `?action=notifications-read` on
 
 ## Known gaps
 
-- X, Pinterest, and other remaining platforms still just flip a status flag on Connections — no real integration.
+- X and Bluesky still just flip a status flag on Connections — no real integration.
+- Pinterest video Pins aren't supported (needs a cover-image thumbnail this app doesn't generate) — image and text only.
+- Pinterest Pins are private (Trial access) until the app passes Pinterest's Standard access review — see "Real platform integration" above.
 - TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
 - LinkedIn posting only targets the connected member's personal profile — no company/organization Page posting (that needs a separate, harder-to-get scope: `w_organization_social`).
 - TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).

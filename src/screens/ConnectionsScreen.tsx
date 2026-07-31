@@ -20,6 +20,7 @@ const OAUTH_LABEL_PROVIDER: Record<string, string> = {
   'TikTok (business)': 'tiktok',
   LinkedIn: 'linkedin',
   Threads: 'threads',
+  Pinterest: 'pinterest',
 };
 
 const HEADER_CONNECT_BUTTONS: Array<{ provider: string; label: string }> = [
@@ -28,6 +29,7 @@ const HEADER_CONNECT_BUTTONS: Array<{ provider: string; label: string }> = [
   { provider: 'tiktok', label: 'Connect TikTok' },
   { provider: 'linkedin', label: 'Connect LinkedIn' },
   { provider: 'threads', label: 'Connect Threads' },
+  { provider: 'pinterest', label: 'Connect Pinterest' },
 ];
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {
