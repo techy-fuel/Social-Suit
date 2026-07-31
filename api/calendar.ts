@@ -8,6 +8,7 @@ import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } f
 import { refreshLinkedInAccessToken, publishToLinkedIn } from './_linkedin.js';
 import { refreshThreadsAccessToken, publishToThreads, finishThreadsPublish } from './_threads.js';
 import { refreshPinterestAccessToken, publishToPinterest } from './_pinterest.js';
+import { refreshXAccessToken, publishToX } from './_x.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
 import { notify } from './_notify.js';
 
@@ -71,6 +72,17 @@ async function getValidPinterestAccessToken(connId: number, accessToken: string,
   if (!expiringSoon) return accessToken;
   if (!refreshToken) throw new Error("This Pinterest connection can't refresh its token — reconnect it on the Connections page.");
   const refreshed = await refreshPinterestAccessToken(refreshToken);
+  await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, refresh_token = ${refreshed.refreshToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
+  return refreshed.accessToken;
+}
+
+// X refresh tokens rotate on every use too — persist the new one or the
+// connection becomes unrefreshable after the next refresh.
+async function getValidXAccessToken(connId: number, accessToken: string, refreshToken: string | null, expiresAt: string | null): Promise<string> {
+  const expiringSoon = !expiresAt || new Date(expiresAt).getTime() < Date.now() + 60_000;
+  if (!expiringSoon) return accessToken;
+  if (!refreshToken) throw new Error("This X connection can't refresh its token — reconnect it on the Connections page.");
+  const refreshed = await refreshXAccessToken(refreshToken);
   await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, refresh_token = ${refreshed.refreshToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
   return refreshed.accessToken;
 }
@@ -148,7 +160,7 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
   const post = rows[0];
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (!post.media_url) return badRequest(res, 'This post has no media attached — publishing requires an image or video for now.');
-  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok' && post.platform !== 'linkedin' && post.platform !== 'threads' && post.platform !== 'pinterest') {
+  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok' && post.platform !== 'linkedin' && post.platform !== 'threads' && post.platform !== 'pinterest' && post.platform !== 'x') {
     return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
   }
   if (post.platform === 'youtube' && post.media_type !== 'video') {
@@ -222,6 +234,9 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
     } else if (post.platform === 'pinterest') {
       const accessToken = await getValidPinterestAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
       platformPostId = await publishToPinterest(accessToken, conn.platform_account_id, post.caption, post.media_url);
+    } else if (post.platform === 'x') {
+      const accessToken = await getValidXAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
+      platformPostId = await publishToX(accessToken, post.caption, post.media_url, post.media_type);
     } else if (post.platform === 'facebook' && post.media_type === 'video') {
       platformPostId = await publishVideoToPage(conn.platform_account_id, conn.access_token, post.media_url, post.caption);
     } else if (post.platform === 'facebook') {

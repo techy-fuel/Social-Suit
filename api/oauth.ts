@@ -7,14 +7,15 @@ import { tiktokAuthorizeUrl, exchangeTikTokCode, fetchTikTokCreatorInfo } from '
 import { linkedinAuthorizeUrl, exchangeLinkedInCode, fetchLinkedInProfile } from './_linkedin.js';
 import { threadsAuthorizeUrl, exchangeThreadsCode, fetchThreadsProfile } from './_threads.js';
 import { pinterestAuthorizeUrl, exchangePinterestCode, fetchPinterestBoards } from './_pinterest.js';
+import { generatePkce, xAuthorizeUrl, exchangeXCode, fetchXProfile } from './_x.js';
 
 // Consolidated (?provider=&action=) so adding more platforms doesn't cost
 // another top-level file against Vercel's 12-function cap.
 
-type Provider = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'threads' | 'pinterest';
-const PROVIDERS: Provider[] = ['meta', 'google', 'tiktok', 'linkedin', 'threads', 'pinterest'];
+type Provider = 'meta' | 'google' | 'tiktok' | 'linkedin' | 'threads' | 'pinterest' | 'x';
+const PROVIDERS: Provider[] = ['meta', 'google', 'tiktok', 'linkedin', 'threads', 'pinterest', 'x'];
 
-const AUTHORIZE_URL: Record<Provider, (redirectUri: string, state: string) => string> = {
+const AUTHORIZE_URL: Record<Exclude<Provider, 'x'>, (redirectUri: string, state: string) => string> = {
   meta: metaAuthorizeUrl,
   google: googleAuthorizeUrl,
   tiktok: tiktokAuthorizeUrl,
@@ -50,14 +51,34 @@ async function oauthStart(req: VercelRequest, res: VercelResponse, provider: Pro
 
   // provider travels inside the signed state too — TikTok's callback has no
   // ?provider= query param to read it back from (see redirectUri() above).
-  const state = signState({ accountId: session.accountId, workspace, provider, exp: Date.now() + 10 * 60 * 1000 });
+  const base = { accountId: session.accountId, workspace, provider, exp: Date.now() + 10 * 60 * 1000 };
+
+  if (provider === 'x') {
+    // X mandates PKCE — the verifier has to survive the round trip to
+    // X and back, and our signed state is the only thing that does that
+    // (no server-side session storage for OAuth flows here).
+    const { verifier, challenge } = generatePkce();
+    const state = signState({ ...base, codeVerifier: verifier });
+    res.redirect(302, xAuthorizeUrl(redirectUri(req, provider), state, challenge));
+    return;
+  }
+
+  const state = signState(base);
   res.redirect(302, AUTHORIZE_URL[provider](redirectUri(req, provider), state));
 }
 
-function parseState(req: VercelRequest): { accountId: number; workspace: string; provider: string; exp: number } | null {
+interface OAuthState {
+  accountId: number;
+  workspace: string;
+  provider: string;
+  exp: number;
+  codeVerifier?: string;
+}
+
+function parseState(req: VercelRequest): OAuthState | null {
   const session = getSession(req);
   const stateToken = String(req.query.state || '');
-  const state = verifyState<{ accountId: number; workspace: string; provider: string; exp: number }>(stateToken);
+  const state = verifyState<OAuthState>(stateToken);
   if (!session || !state || state.exp < Date.now() || state.accountId !== session.accountId) return null;
   return state;
 }
@@ -318,6 +339,41 @@ async function pinterestCallback(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function xCallback(req: VercelRequest, res: VercelResponse) {
+  const state = parseState(req);
+  if (!state || !state.codeVerifier) {
+    res.redirect(302, '/connections?oauth_error=invalid_state');
+    return;
+  }
+  if (req.query.error) {
+    res.redirect(302, '/connections?oauth_error=denied');
+    return;
+  }
+  const code = String(req.query.code || '');
+  if (!code) {
+    res.redirect(302, '/connections?oauth_error=missing_code');
+    return;
+  }
+
+  try {
+    const workspaceId = await getWorkspaceId(state.workspace, state.accountId);
+    const tokens = await exchangeXCode(code, redirectUri(req, 'x'), state.codeVerifier);
+    const profile = await fetchXProfile(tokens.accessToken);
+
+    await sql`
+      INSERT INTO connections (workspace_id, platform, label, status, account, access_token, refresh_token, platform_account_id, token_expires_at, sort_order)
+      VALUES (${workspaceId}, 'x', ${'@' + profile.username}, 'connected', ${'@' + profile.username}, ${tokens.accessToken}, ${tokens.refreshToken}, ${profile.id}, ${tokens.expiresAt.toISOString()}, 7000)
+      ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
+        status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token,
+        refresh_token = EXCLUDED.refresh_token, token_expires_at = EXCLUDED.token_expires_at`;
+
+    res.redirect(302, `/connections?connected=X`);
+  } catch (err) {
+    console.error('x oauth callback error:', err);
+    res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
+  }
+}
+
 const CALLBACKS: Record<Provider, (req: VercelRequest, res: VercelResponse) => Promise<void>> = {
   meta: metaCallback,
   google: googleCallback,
@@ -325,6 +381,7 @@ const CALLBACKS: Record<Provider, (req: VercelRequest, res: VercelResponse) => P
   linkedin: linkedinCallback,
   threads: threadsCallback,
   pinterest: pinterestCallback,
+  x: xCallback,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

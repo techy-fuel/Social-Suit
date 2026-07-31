@@ -21,6 +21,7 @@ const OAUTH_LABEL_PROVIDER: Record<string, string> = {
   LinkedIn: 'linkedin',
   Threads: 'threads',
   Pinterest: 'pinterest',
+  X: 'x',
 };
 
 const HEADER_CONNECT_BUTTONS: Array<{ provider: string; label: string }> = [
@@ -30,6 +31,7 @@ const HEADER_CONNECT_BUTTONS: Array<{ provider: string; label: string }> = [
   { provider: 'linkedin', label: 'Connect LinkedIn' },
   { provider: 'threads', label: 'Connect Threads' },
   { provider: 'pinterest', label: 'Connect Pinterest' },
+  { provider: 'x', label: 'Connect X' },
 ];
 
 const statusTone: Record<string, 'positive' | 'warning' | 'neutral'> = {

@@ -82,15 +82,18 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta, YouTube, TikTok, LinkedIn, Threads, Pinterest)
+## Real platform integration (Meta, YouTube, TikTok, LinkedIn, Threads, Pinterest, X)
 
 `api/oauth.ts` is a single consolidated OAuth handler for every provider
-(`?provider=meta|google|tiktok|linkedin|threads|pinterest&action=start|callback`)
+(`?provider=meta|google|tiktok|linkedin|threads|pinterest|x&action=start|callback`)
 — deliberately not one file per provider, since Vercel's Hobby plan caps a
 deployment at 12 serverless functions and this project is already at that
 cap. Providers are registered in the `PROVIDERS` array and the
 `AUTHORIZE_URL`/`CALLBACKS` lookup tables at the top of the file — add a new
 platform there (plus its own callback function), not a new top-level file.
+X is the one exception to the `AUTHORIZE_URL` table (see its section below —
+PKCE needs extra values threaded through that don't fit the other
+providers' plain `(redirectUri, state) => url` shape).
 
 ### Meta (Facebook Pages + Instagram)
 
@@ -239,6 +242,31 @@ goes public once approved, no code change needed" story as TikTok.
   unrefreshable after the next refresh (`getValidPinterestAccessToken()` in
   `api/calendar.ts`).
 
+### X
+
+**X's API is pay-per-use, not free** (~$0.015/post, ~$0.20 if it contains a
+link, no free tier for new developer accounts as of Feb 2026) — the account
+running this needs billing set up in the X Developer Portal. OAuth 2.0 with
+PKCE is mandatory here (`api/_x.ts`), unlike every other platform in this
+project: the code verifier is generated in `oauth.ts`'s `oauthStart()`,
+embedded in the signed `state` (there's no server-side session to hold it
+across the redirect to X and back), and pulled back out in `xCallback()` —
+that's also why X is the one provider that doesn't fit the `AUTHORIZE_URL`
+lookup table.
+
+- **Media upload is the least-verified part of this whole integration.**
+  X's chunked upload (`initialize` → `append` per ≤4MB chunk, fetched via
+  HTTP Range requests so only one chunk is ever in memory → `finalize` →
+  poll if still processing) is implemented from documentation and community
+  reports rather than a confirmed working reference — if connecting works
+  but publishing a post with media doesn't, this is the first place to
+  check (compare against `https://docs.x.com/x-api/media` for the current
+  exact endpoint shapes).
+- Refresh tokens **rotate on every refresh** like TikTok/Pinterest's.
+- Text-only posts (no attached image/video) aren't reachable from this
+  app's UI today — `publishPost()` in `api/calendar.ts` requires media for
+  every platform, X included, even though X's API itself doesn't need it.
+
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
 `post-media` (must be created manually, set **public**); videos (≤200MB) skip
@@ -300,9 +328,11 @@ Read via `?action=notifications` and `?action=notifications-read` on
 
 ## Known gaps
 
-- X and Bluesky still just flip a status flag on Connections — no real integration.
+- Bluesky still just flips a status flag on Connections — no real integration.
 - Pinterest video Pins aren't supported (needs a cover-image thumbnail this app doesn't generate) — image and text only.
 - Pinterest Pins are private (Trial access) until the app passes Pinterest's Standard access review — see "Real platform integration" above.
+- X requires a paid (pay-per-use) API plan — see "Real platform integration" above. Its media upload path is also the least-verified integration here; may need a follow-up fix once actually exercised.
+- X posting always requires attaching media (this app's own constraint, not X's) since `publishPost()` requires media for every platform.
 - TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
 - LinkedIn posting only targets the connected member's personal profile — no company/organization Page posting (that needs a separate, harder-to-get scope: `w_organization_social`).
 - TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).
