@@ -68,6 +68,14 @@ export function refreshTikTokAccessToken(refreshToken: string): Promise<TikTokTo
   return tokenRequest({ refresh_token: refreshToken, grant_type: 'refresh_token' });
 }
 
+class TikTokApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 async function apiPost(path: string, accessToken: string, body: unknown): Promise<any> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
@@ -76,7 +84,7 @@ async function apiPost(path: string, accessToken: string, body: unknown): Promis
   });
   const json: any = await res.json();
   if (!res.ok || (json.error && json.error.code && json.error.code !== 'ok')) {
-    throw new Error(`TikTok API error: ${json.error?.message || res.statusText}`);
+    throw new TikTokApiError(`TikTok API error: ${json.error?.message || res.statusText}`, json.error?.code);
   }
   return json.data;
 }
@@ -90,8 +98,10 @@ export interface TikTokCreatorInfo {
 
 // TikTok requires querying (and showing) this before every post — the
 // creator's name/avatar and which privacy levels are actually available to
-// them right now. For an unaudited app, privacyOptions will only ever
-// contain SELF_ONLY (private) no matter what's requested.
+// them right now. In practice privacyOptions reflects the creator's own
+// account settings, not whether this app is audited — an unaudited app can
+// still get PUBLIC_TO_EVERYONE back here and only find out it's not allowed
+// when the actual post is rejected (see the retry in publishVideoToTikTok).
 export async function fetchTikTokCreatorInfo(accessToken: string): Promise<TikTokCreatorInfo> {
   const data = await apiPost('/post/publish/creator_info/query/', accessToken, {});
   return {
@@ -138,19 +148,8 @@ export function finishTikTokPublish(publishId: string, accessToken: string): Pro
   return pollTikTokStatus(publishId, accessToken, 5, 1500);
 }
 
-export async function publishVideoToTikTok(accessToken: string, videoUrl: string, caption: string): Promise<TikTokPublishResult> {
-  const creator = await fetchTikTokCreatorInfo(accessToken);
-  const privacyLevel = pickPrivacyLevel(creator.privacyOptions);
-
-  const source = await fetch(videoUrl);
-  if (!source.ok || !source.body) throw new Error(`Couldn't fetch video from storage (${source.status}).`);
-  const size = Number(source.headers.get('content-length') || 0);
-  if (!size) throw new Error("Couldn't determine the video's file size.");
-  if (size > MAX_SINGLE_CHUNK_BYTES) {
-    throw new Error('This video is too large for TikTok right now (64MB limit) — trim it and try again.');
-  }
-
-  const init = await apiPost('/post/publish/video/init/', accessToken, {
+function initVideoUpload(accessToken: string, caption: string, privacyLevel: string, size: number): Promise<any> {
+  return apiPost('/post/publish/video/init/', accessToken, {
     post_info: {
       title: caption.slice(0, 150),
       privacy_level: privacyLevel,
@@ -165,6 +164,35 @@ export async function publishVideoToTikTok(accessToken: string, videoUrl: string
       total_chunk_count: 1,
     },
   });
+}
+
+export async function publishVideoToTikTok(accessToken: string, videoUrl: string, caption: string): Promise<TikTokPublishResult> {
+  const creator = await fetchTikTokCreatorInfo(accessToken);
+  let privacyLevel = pickPrivacyLevel(creator.privacyOptions);
+
+  const source = await fetch(videoUrl);
+  if (!source.ok || !source.body) throw new Error(`Couldn't fetch video from storage (${source.status}).`);
+  const size = Number(source.headers.get('content-length') || 0);
+  if (!size) throw new Error("Couldn't determine the video's file size.");
+  if (size > MAX_SINGLE_CHUNK_BYTES) {
+    throw new Error('This video is too large for TikTok right now (64MB limit) — trim it and try again.');
+  }
+
+  let init: any;
+  try {
+    init = await initVideoUpload(accessToken, caption, privacyLevel, size);
+  } catch (err) {
+    // Unaudited apps can only ever post privately, but creator_info's
+    // privacy options don't reliably reflect that — retry once forced to
+    // SELF_ONLY instead of failing outright. Once the app is audited,
+    // TikTok won't return this error and the first attempt above succeeds.
+    if (err instanceof TikTokApiError && err.code === 'unaudited_client_can_only_post_to_private_accounts' && privacyLevel !== 'SELF_ONLY') {
+      privacyLevel = 'SELF_ONLY';
+      init = await initVideoUpload(accessToken, caption, privacyLevel, size);
+    } else {
+      throw err;
+    }
+  }
   if (!init.publish_id || !init.upload_url) {
     throw new Error(`TikTok API error: no upload session returned (got ${JSON.stringify(init)}).`);
   }
