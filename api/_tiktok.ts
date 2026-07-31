@@ -84,7 +84,9 @@ async function apiPost(path: string, accessToken: string, body: unknown): Promis
   });
   const json: any = await res.json();
   if (!res.ok || (json.error && json.error.code && json.error.code !== 'ok')) {
-    throw new TikTokApiError(`TikTok API error: ${json.error?.message || res.statusText}`, json.error?.code);
+    const code = json.error?.code;
+    console.error(`TikTok API error on ${path}:`, JSON.stringify(json));
+    throw new TikTokApiError(`TikTok API error: ${json.error?.message || res.statusText}${code ? ` (code: ${code})` : ''}`, code);
   }
   return json.data;
 }
