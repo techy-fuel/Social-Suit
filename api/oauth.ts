@@ -4,6 +4,7 @@ import { getSession, signState, verifyState, describeError } from './_auth.js';
 import { metaAuthorizeUrl, exchangeCodeForUserToken, fetchPagesWithInstagram } from './_meta.js';
 import { googleAuthorizeUrl, exchangeGoogleCode, fetchYouTubeChannel } from './_google.js';
 import { tiktokAuthorizeUrl, exchangeTikTokCode, fetchTikTokCreatorInfo } from './_tiktok.js';
+import { linkedinAuthorizeUrl, exchangeLinkedInCode, fetchLinkedInProfile } from './_linkedin.js';
 
 // Consolidated (?provider=&action=) so adding more platforms doesn't cost
 // another top-level file against Vercel's 12-function cap.
@@ -17,7 +18,7 @@ function redirectUri(req: VercelRequest, provider: string): string {
   return `${siteUrl}/api/oauth?provider=${provider}&action=callback`;
 }
 
-async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'meta' | 'google' | 'tiktok') {
+async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'meta' | 'google' | 'tiktok' | 'linkedin') {
   const session = getSession(req);
   if (!session) {
     res.redirect(302, '/');
@@ -40,7 +41,9 @@ async function oauthStart(req: VercelRequest, res: VercelResponse, provider: 'me
     ? metaAuthorizeUrl(redirectUri(req, provider), state)
     : provider === 'google'
     ? googleAuthorizeUrl(redirectUri(req, provider), state)
-    : tiktokAuthorizeUrl(redirectUri(req, provider), state);
+    : provider === 'tiktok'
+    ? tiktokAuthorizeUrl(redirectUri(req, provider), state)
+    : linkedinAuthorizeUrl(redirectUri(req, provider), state);
   res.redirect(302, url);
 }
 
@@ -193,12 +196,47 @@ async function tiktokCallback(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+async function linkedinCallback(req: VercelRequest, res: VercelResponse) {
+  const state = parseState(req);
+  if (!state) {
+    res.redirect(302, '/connections?oauth_error=invalid_state');
+    return;
+  }
+  if (req.query.error) {
+    res.redirect(302, '/connections?oauth_error=denied');
+    return;
+  }
+  const code = String(req.query.code || '');
+  if (!code) {
+    res.redirect(302, '/connections?oauth_error=missing_code');
+    return;
+  }
+
+  try {
+    const workspaceId = await getWorkspaceId(state.workspace, state.accountId);
+    const tokens = await exchangeLinkedInCode(code, redirectUri(req, 'linkedin'));
+    const profile = await fetchLinkedInProfile(tokens.accessToken);
+
+    await sql`
+      INSERT INTO connections (workspace_id, platform, label, status, account, access_token, refresh_token, platform_account_id, token_expires_at, sort_order)
+      VALUES (${workspaceId}, 'linkedin', ${profile.name}, 'connected', ${profile.name}, ${tokens.accessToken}, ${tokens.refreshToken}, ${profile.sub}, ${tokens.expiresAt.toISOString()}, 4000)
+      ON CONFLICT (workspace_id, platform_account_id) WHERE platform_account_id IS NOT NULL DO UPDATE SET
+        status = 'connected', label = EXCLUDED.label, account = EXCLUDED.account, access_token = EXCLUDED.access_token,
+        refresh_token = EXCLUDED.refresh_token, token_expires_at = EXCLUDED.token_expires_at`;
+
+    res.redirect(302, `/connections?connected=LinkedIn`);
+  } catch (err) {
+    console.error('linkedin oauth callback error:', err);
+    res.redirect(302, `/connections?oauth_error=${encodeURIComponent(describeError(err))}`);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const provider = String(req.query.provider || '');
   const action = String(req.query.action || '');
 
   if (action === 'start') {
-    if (provider !== 'meta' && provider !== 'google' && provider !== 'tiktok') {
+    if (provider !== 'meta' && provider !== 'google' && provider !== 'tiktok' && provider !== 'linkedin') {
       res.status(400).json({ error: 'Unknown OAuth provider.' });
       return;
     }
@@ -213,6 +251,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (resolvedProvider === 'meta') return metaCallback(req, res);
     if (resolvedProvider === 'google') return googleCallback(req, res);
     if (resolvedProvider === 'tiktok') return tiktokCallback(req, res);
+    if (resolvedProvider === 'linkedin') return linkedinCallback(req, res);
     res.redirect(302, '/connections?oauth_error=invalid_state');
     return;
   }

@@ -82,7 +82,7 @@ npm run seed               # create the demo login + reseed content over HTTPS (
 - `db/seed-via-api.ts` — creates the demo Supabase Auth login and reseeds the same content over HTTPS (Admin API + PostgREST), for environments without raw Postgres access.
 - `design/` — the original Claude Design handoff bundle (chat transcripts, tokens, prototype JSX, guidelines) this app was built from.
 
-## Real platform integration (Meta, YouTube, TikTok)
+## Real platform integration (Meta, YouTube, TikTok, LinkedIn)
 
 `api/oauth.ts` is a single consolidated OAuth handler for every provider
 (`?provider=meta|google|tiktok&action=start|callback`) — deliberately not one
@@ -163,6 +163,32 @@ refresh **rotates the refresh token too** — `getValidTikTokAccessToken()` in
 refresh, not just the access token. Only publishes video (no photo-post
 support yet).
 
+### LinkedIn
+
+Connects via LinkedIn's OAuth (OpenID Connect for identity + "Share on
+LinkedIn" for posting — both products have to be added to the app
+separately), scoped to `openid profile email w_member_social`
+(`api/_linkedin.ts`). Publishes text, one image, or one video to the
+connected member's personal profile via the Posts API (`POST /rest/posts`);
+every request needs an `LinkedIn-Version` header (`LINKEDIN_VERSION`
+constant — bump periodically) or LinkedIn rejects it outright.
+
+- **Image upload is one PUT**; **video upload is multi-part**: LinkedIn's
+  `initializeUpload` hands back one or more byte ranges (each its own
+  `uploadUrl`), we PUT each range (fetched from wherever the video's hosted
+  via an HTTP `Range` request, so only one part is ever in memory) and
+  collect the `ETag` from each response, then send all of them to
+  `finalizeUpload`. No polling for "video ready" afterward — LinkedIn's own
+  feed handles a still-processing video gracefully, unlike Instagram.
+- **Refresh tokens usually aren't available.** Self-serve apps aren't
+  granted one unless separately approved for LinkedIn's "Programmatic
+  refresh tokens" product — most LinkedIn connections will just need
+  reconnecting every ~60 days when the access token expires, same code path
+  as any other missing-refresh-token case (`getValidLinkedInAccessToken()`
+  in `api/calendar.ts`).
+- The created post's id comes back in the `x-restli-id` **response header**,
+  not the JSON body — a REST.li quirk specific to this API.
+
 **Media storage is split across two backends** (`api/calendar.ts`):
 images (≤8MB) go through our own function to a Supabase Storage bucket
 `post-media` (must be created manually, set **public**); videos (≤200MB) skip
@@ -224,8 +250,9 @@ Read via `?action=notifications` and `?action=notifications-read` on
 
 ## Known gaps
 
-- LinkedIn, Threads, X, and other platforms still just flip a status flag on Connections — no real integration.
+- Threads, X, and other remaining platforms still just flip a status flag on Connections — no real integration.
 - TikTok posts are private (SELF_ONLY) until the app passes TikTok's audit — see "Real platform integration" above.
+- LinkedIn posting only targets the connected member's personal profile — no company/organization Page posting (that needs a separate, harder-to-get scope: `w_organization_social`).
 - TikTok video uploads are capped at 64MB (no multi-chunk upload implemented).
 - Deleting an already-published post only deletes it on the platform for YouTube. Meta's Graph API rejects DELETE on Page photo/video posts outright ("Unsupported delete request", subcode 33 — a platform restriction, not a permissions issue), and Instagram/TikTok don't expose deletion to third-party apps at all; for those three, deleting in-app only removes it from the planner and the published content stays live.
 - One user per account — no team invites/multiple users per tenant yet.

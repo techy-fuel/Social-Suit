@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from './_supabase.js';
 import { publishPhotoToPage, publishPhotoToInstagram, publishVideoToPage, publishVideoToInstagram, finishInstagramVideo } from './_meta.js';
 import { refreshGoogleAccessToken, uploadVideoToYouTube, deleteYouTubeVideo } from './_google.js';
 import { refreshTikTokAccessToken, publishVideoToTikTok, finishTikTokPublish } from './_tiktok.js';
+import { refreshLinkedInAccessToken, publishToLinkedIn } from './_linkedin.js';
 import { createUploadUrl, deleteObject as deleteR2Object } from './_r2.js';
 import { notify } from './_notify.js';
 
@@ -30,6 +31,20 @@ async function getValidTikTokAccessToken(connId: number, accessToken: string, re
   if (!expiringSoon) return accessToken;
   if (!refreshToken) throw new Error("This TikTok connection can't refresh its token — reconnect it on the Connections page.");
   const refreshed = await refreshTikTokAccessToken(refreshToken);
+  await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, refresh_token = ${refreshed.refreshToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
+  return refreshed.accessToken;
+}
+
+// LinkedIn access tokens last ~60 days. Self-serve apps generally aren't
+// granted a refresh token at all (that's a separately-approved product), so
+// most LinkedIn connections will hit the "reconnect" branch here once the
+// token expires rather than silently refreshing — same shape as the other
+// platforms' missing-refresh-token case, just expected to happen more often.
+async function getValidLinkedInAccessToken(connId: number, accessToken: string, refreshToken: string | null, expiresAt: string | null): Promise<string> {
+  const expiringSoon = !expiresAt || new Date(expiresAt).getTime() < Date.now() + 60_000;
+  if (!expiringSoon) return accessToken;
+  if (!refreshToken) throw new Error("This LinkedIn connection can't refresh its token — reconnect it on the Connections page.");
+  const refreshed = await refreshLinkedInAccessToken(refreshToken);
   await sql`UPDATE connections SET access_token = ${refreshed.accessToken}, refresh_token = ${refreshed.refreshToken}, token_expires_at = ${refreshed.expiresAt.toISOString()} WHERE id = ${connId}`;
   return refreshed.accessToken;
 }
@@ -107,7 +122,7 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
   const post = rows[0];
   if (!post) return res.status(404).json({ error: 'Post not found.' });
   if (!post.media_url) return badRequest(res, 'This post has no media attached — publishing requires an image or video for now.');
-  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok') {
+  if (post.platform !== 'facebook' && post.platform !== 'instagram' && post.platform !== 'youtube' && post.platform !== 'tiktok' && post.platform !== 'linkedin') {
     return badRequest(res, `Publishing isn't wired up for "${post.platform}" yet.`);
   }
   if (post.platform === 'youtube' && post.media_type !== 'video') {
@@ -158,6 +173,9 @@ async function publishPost(req: VercelRequest, res: VercelResponse, session: Ses
         return res.status(202).json({ ok: true, processing: true });
       }
       platformPostId = result.platformPostId;
+    } else if (post.platform === 'linkedin') {
+      const accessToken = await getValidLinkedInAccessToken(post.connection_id, conn.access_token, conn.refresh_token, conn.token_expires_at);
+      platformPostId = await publishToLinkedIn(accessToken, conn.platform_account_id, post.caption, post.media_url, post.media_type);
     } else if (post.platform === 'facebook' && post.media_type === 'video') {
       platformPostId = await publishVideoToPage(conn.platform_account_id, conn.access_token, post.media_url, post.caption);
     } else if (post.platform === 'facebook') {
